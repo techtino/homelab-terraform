@@ -20,7 +20,7 @@ You need:
 - TrueNAS with the `FastNAS` pool and NVMe-oF enabled
 - OPNsense/Unbound for local DNS
 - OpenTofu, `kubectl`, and SSH on your workstation
-- An SSH key authorized on Proxmox and the Kubernetes VMs
+- An SSH key authorized on Proxmox and the Kubernetes VMs (ssh-keygen + ssh-copy-id to proxmox)
 
 The Proxmox datastore `truenas-nvme` must already exist. Set it up before
 running the Proxmox project as described below.

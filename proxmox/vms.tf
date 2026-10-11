@@ -29,18 +29,6 @@ locals {
       role   = "worker"
       master = false
     }
-    worker3 = {
-      name   = "k8s-worker3"
-      vm_id  = 109
-      role   = "worker"
-      master = false
-    }
-    worker4 = {
-      name   = "k8s-worker4"
-      vm_id  = 110
-      role   = "worker"
-      master = false
-    }
   }
 
   kubernetes_ipv4_addresses = {

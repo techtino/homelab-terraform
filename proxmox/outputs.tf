@@ -17,14 +17,5 @@ output "kubernetes_nodes" {
       vm_id = module.kubernetes_vm["worker2"].vm_id
     }
 
-    worker3 = {
-      name  = module.kubernetes_vm["worker3"].name
-      vm_id = module.kubernetes_vm["worker3"].vm_id
-    }
-
-    worker4 = {
-      name  = module.kubernetes_vm["worker4"].name
-      vm_id = module.kubernetes_vm["worker4"].vm_id
-    }
   }
 }

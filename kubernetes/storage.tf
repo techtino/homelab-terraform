@@ -74,24 +74,3 @@ resource "kubernetes_storage_class_v1" "truenas_nvmeof" {
     helm_release.truenas_csi,
   ]
 }
-
-resource "kubernetes_persistent_volume_claim_v1" "app_data" {
-  metadata {
-    name      = "app-data"
-    namespace = "default"
-  }
-
-  spec {
-    access_modes       = ["ReadWriteOnce"]
-    storage_class_name = kubernetes_storage_class_v1.truenas_nvmeof.metadata[0].name
-
-    resources {
-      requests = {
-        storage = "5Gi"
-      }
-    }
-  }
-  depends_on = [
-    helm_release.truenas_csi
-  ]
-}
