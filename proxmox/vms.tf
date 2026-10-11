@@ -96,11 +96,11 @@ resource "terraform_data" "join_workers" {
 
       ssh_opts=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
       control_ip='${local.kubernetes_ipv4_addresses.control}'
-      worker_ips=(${join(" ", [for name in ["worker1", "worker2", "worker3", "worker4"] : local.kubernetes_ipv4_addresses[name]])})
+      worker_ips=(${join(" ", [for name, vm in local.kubernetes_vms : local.kubernetes_ipv4_addresses[name] if vm.role == "worker"])})
       join_file="$${TMPDIR:-/tmp}/kubeadm-join-command.$$.sh"
       trap 'rm -f "$join_file"' EXIT
 
-      for attempt in $$(seq 1 90); do
+      for attempt in $(seq 1 90); do
         if ssh "$${ssh_opts[@]}" ${var.ssh_username}@$control_ip \
           'sudo test -s /home/${var.ssh_username}/kubeadm-join-command.sh'; then
           break
@@ -116,7 +116,7 @@ resource "terraform_data" "join_workers" {
         'sudo cat /home/${var.ssh_username}/kubeadm-join-command.sh' > "$join_file"
 
       for worker_ip in "$${worker_ips[@]}"; do
-        for attempt in $$(seq 1 90); do
+        for attempt in $(seq 1 90); do
           if ssh "$${ssh_opts[@]}" ${var.ssh_username}@$worker_ip \
             'command -v kubeadm >/dev/null && systemctl is-active --quiet containerd'; then
             break

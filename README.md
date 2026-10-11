@@ -106,8 +106,14 @@ Create the VMs and bootstrap Kubernetes:
 cd ~/homelab-terraform/proxmox
 tofu init
 tofu plan
-tofu apply
+tofu apply -parallelism=1
 ```
+
+The Proxmox VMs use TrueNAS-backed NVMe/TCP storage. Apply with parallelism
+set to `1` so the storage plugin handles VM operations sequentially; the
+default OpenTofu parallelism can overwhelm it when several VMs are created at
+once. This setting applies only to this Proxmox apply; the Kubernetes project
+can use the default parallelism.
 
 The Proxmox project:
 
@@ -121,9 +127,22 @@ Cilium is installed by the Kubernetes project after the workers have joined.
 
 ## Install Kubernetes Services
 
-Make sure `~/.kube/config` points to the new cluster, then run:
+Copy the control-plane kubeconfig to the machine where you will run `kubectl`
+and OpenTofu. Replace `<control-plane-ip>` with the control-plane VM's current
+IP address:
 
 ```bash
+mkdir -p ~/.kube
+scp techtino@<control-plane-ip>:/home/techtino/.kube/config ~/.kube/config
+chmod 600 ~/.kube/config
+```
+
+If `~/.kube/config` already exists, back it up or merge the new cluster
+configuration instead of overwriting it. Keep kubeconfig private and do not
+commit it. Confirm that `kubectl` can reach the new cluster, then run:
+
+```bash
+kubectl get nodes
 cd ~/homelab-terraform/kubernetes
 tofu init
 tofu plan
