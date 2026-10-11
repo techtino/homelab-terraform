@@ -1,0 +1,7 @@
+.tofu/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.env
+crash.log
