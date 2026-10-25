@@ -4,9 +4,6 @@ resource "proxmox_virtual_environment_file" "user_data" {
   # Cloud-init is consumed during first boot. Updating the snippet does not
   # re-run cloud-init inside an existing VM, so preserve the live snippet until
   # a deliberate VM rebuild is requested.
-  lifecycle {
-    ignore_changes = [source_raw]
-  }
 
   content_type = "snippets"
   datastore_id = var.cloud_init_datastore_id
@@ -112,9 +109,10 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   network_device {
-    bridge   = var.network_bridge
-    firewall = true
-    model    = "virtio"
+    bridge      = var.network_bridge
+    firewall    = true
+    mac_address = var.network_mac_address
+    model       = "virtio"
   }
 
   operating_system {

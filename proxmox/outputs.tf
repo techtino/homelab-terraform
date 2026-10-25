@@ -19,3 +19,8 @@ output "kubernetes_nodes" {
 
   }
 }
+
+output "kubernetes_control_plane_ipv4" {
+  description = "Current DHCP address of the Kubernetes control-plane API server."
+  value       = local.kubernetes_ipv4_addresses.control
+}

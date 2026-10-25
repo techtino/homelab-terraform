@@ -12,22 +12,25 @@ locals {
 
   kubernetes_vms = {
     control = {
-      name   = "k8s-control"
-      vm_id  = 106
-      role   = "control"
-      master = true
+      name        = "k8s-control"
+      vm_id       = 106
+      role        = "control"
+      master      = true
+      mac_address = "BC:24:11:9A:81:A7"
     }
     worker1 = {
-      name   = "k8s-worker1"
-      vm_id  = 107
-      role   = "worker"
-      master = false
+      name        = "k8s-worker1"
+      vm_id       = 107
+      role        = "worker"
+      master      = false
+      mac_address = null
     }
     worker2 = {
-      name   = "k8s-worker2"
-      vm_id  = 108
-      role   = "worker"
-      master = false
+      name        = "k8s-worker2"
+      vm_id       = 108
+      role        = "worker"
+      master      = false
+      mac_address = null
     }
   }
 
@@ -63,8 +66,9 @@ module "kubernetes_vm" {
     }
   )
 
-  vm_cores     = var.vm_cores
-  vm_memory_mb = var.vm_memory_mb
+  vm_cores            = var.vm_cores
+  vm_memory_mb        = var.vm_memory_mb
+  network_mac_address = each.value.mac_address
 }
 
 # Join workers after the control-plane cloud-init has generated its runtime

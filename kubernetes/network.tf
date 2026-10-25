@@ -16,7 +16,11 @@ resource "helm_release" "cilium" {
         replicas = 2
       }
 
-      kubeProxyReplacement = false
+      # kubeadm is configured to skip its kube-proxy addon. Keep these API
+      # server coordinates reachable directly while Cilium starts up.
+      kubeProxyReplacement = true
+      k8sServiceHost       = data.terraform_remote_state.proxmox.outputs.kubernetes_control_plane_ipv4
+      k8sServicePort       = var.cilium_k8s_api_port
     })
   ]
 }

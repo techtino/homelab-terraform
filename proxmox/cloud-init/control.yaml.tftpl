@@ -57,7 +57,35 @@ write_files:
       set -euo pipefail
 
       if [ ! -f /etc/kubernetes/admin.conf ]; then
-        kubeadm init --pod-network-cidr='${kubernetes_pod_cidr}'
+        cat > /etc/kubernetes/kubeadm-config.yaml <<'KUBEADM_CONFIG'
+      apiVersion: kubeadm.k8s.io/v1beta4
+      kind: InitConfiguration
+      skipPhases:
+        - addon/kube-proxy
+      ---
+      apiVersion: kubeadm.k8s.io/v1beta4
+      kind: ClusterConfiguration
+      networking:
+        podSubnet: '${kubernetes_pod_cidr}'
+      etcd:
+        local:
+          extraArgs:
+            - name: listen-metrics-urls
+              value: http://0.0.0.0:2381
+      controllerManager:
+        extraArgs:
+          - name: bind-address
+            value: 0.0.0.0
+      scheduler:
+        extraArgs:
+          - name: bind-address
+            value: 0.0.0.0
+      ---
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      serverTLSBootstrap: true
+      KUBEADM_CONFIG
+        kubeadm init --config=/etc/kubernetes/kubeadm-config.yaml
         kubeadm token create --print-join-command > /home/${ssh_username}/kubeadm-join-command.sh
         chmod 0700 /home/${ssh_username}/kubeadm-join-command.sh
       fi
@@ -66,7 +94,6 @@ write_files:
         kubeadm token create --print-join-command > /home/${ssh_username}/kubeadm-join-command.sh
         chmod 0700 /home/${ssh_username}/kubeadm-join-command.sh
       fi
-
       install -d -m 0700 /home/${ssh_username}/.kube
       cp /etc/kubernetes/admin.conf /home/${ssh_username}/.kube/config
       chown -R ${ssh_username}:${ssh_username} /home/${ssh_username}/.kube
@@ -109,14 +136,13 @@ runcmd:
   - systemctl enable --now qemu-guest-agent
   - netplan apply
   - systemctl restart ssh
-  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  - sh -c 'echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /" > /etc/apt/sources.list.d/kubernetes.list'
+  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - sh -c 'echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /" > /etc/apt/sources.list.d/kubernetes.list'
   - apt-get update
-  - apt-get install -y kubeadm=1.33.5-1.1 kubelet=1.33.5-1.1 kubectl=1.33.5-1.1
-  - apt-mark hold kubelet kubeadm kubectl
+  - apt-get install -y kubeadm kubelet kubectl
   - systemctl enable --now iscsid || true
 %{ if master ~}
   - /usr/local/sbin/bootstrap-control-plane.sh
 %{ endif ~}
 
-final_message: "Kubernetes control-plane bootstrapped. Generate a kubeadm join command for the worker nodes."
+final_message: "Kubernetes control-plane bootstrapped."

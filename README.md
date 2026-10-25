@@ -7,7 +7,7 @@ The cluster uses:
 - Debian VMs on Proxmox
 - Cilium networking
 - MetalLB for LAN load balancer IPs
-- Traefik for ingress
+- Traefik with Kubernetes Gateway API
 - TrueNAS NVMe-oF storage through the TrueNAS CSI driver
 - Portainer for web management
 
@@ -119,11 +119,14 @@ The Proxmox project:
 
 1. Creates the control-plane and worker VMs.
 2. Installs containerd and Kubernetes packages.
-3. Runs `kubeadm init` on the control node.
+3. Runs `kubeadm init` on the control node without installing kube-proxy.
 4. Joins the workers automatically.
 5. Copies the control-plane kubeconfig for the `techtino` user.
 
-Cilium is installed by the Kubernetes project after the workers have joined.
+Cilium is installed by the Kubernetes project after the workers have joined and
+replaces kube-proxy for Kubernetes Service routing. Cilium reads the current
+control-plane IP from the Proxmox project state and connects to the API server
+on port `6443`. Apply the Proxmox project before the Kubernetes project.
 
 ## Install Kubernetes Services
 
@@ -156,6 +159,7 @@ This installs and manages:
 - Traefik
 - TrueNAS CSI
 - StorageClasses and PVCs
+- Metrics Server with CA-verified kubelet connections
 - Portainer
 - The example `hello` application
 
@@ -172,6 +176,53 @@ StorageClass:  truenas-nvmeof
 
 The Kubernetes nodes need `open-iscsi` and `nvme-cli`. Cloud-init installs them automatically.
 
+## Kubelet serving certificates
+
+Kubeadm is configured to request CA-signed kubelet serving certificates through
+the Kubernetes CSR API. Metrics Server trusts the kubeadm cluster CA and uses
+node IPs, so cluster DNS does not need node records.
+
+For an existing cluster, apply the kubelet ConfigMap and Metrics Server changes
+from the `kubernetes` directory:
+
+```bash
+cd ~/homelab-terraform/kubernetes
+tofu apply -target=helm_release.metrics_server
+```
+
+On each existing node, enable serving-certificate requests in the local kubelet
+configuration and restart kubelet:
+
+```bash
+sudo sed -i '/^serverTLSBootstrap:/d' /var/lib/kubelet/config.yaml
+printf '\nserverTLSBootstrap: true\n' | sudo tee -a /var/lib/kubelet/config.yaml
+sudo systemctl restart kubelet
+```
+
+Inspect each `kubernetes.io/kubelet-serving` CSR. Check its requested node
+identity and IP SANs before approving it:
+
+```bash
+kubectl get csr
+kubectl describe csr <csr-name>
+kubectl get csr <csr-name> -o jsonpath='{.spec.request}' | base64 -d | openssl req -noout -text
+kubectl certificate approve <csr-name>
+```
+
+Kubernetes does not automatically approve serving CSRs. New CSRs for certificate
+rotation also require approval unless a policy-aware approver is installed.
+
+Verify Metrics Server and the aggregated API are ready:
+
+```bash
+kubectl get pods -n kube-system -l app.kubernetes.io/instance=metrics-server
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top nodes
+```
+
+The Portainer namespace should finish deleting after the Metrics API becomes
+available.
+
 Check storage with:
 
 ```bash
@@ -183,7 +234,18 @@ kubectl get pv
 
 PVCs use `Retain`, so deleting a claim may leave data behind in TrueNAS. Treat PVC and PV deletion as data-destructive operations and check the corresponding TrueNAS volume first.
 
-## DNS And Ingress
+App modules can also mount existing node directories as host paths. Set
+`extra_volumes` to map each node path to its container mount path:
+
+```hcl
+extra_volumes = {
+  "/mnt/media" = "/media"
+}
+```
+
+The node path must already exist on whichever node runs the app.
+
+## DNS And Gateway API
 
 MetalLB uses this LAN address range:
 
@@ -197,17 +259,46 @@ Traefik uses:
 192.168.1.241
 ```
 
+Terraform downloads and manages the Gateway API standard CRDs at the pinned
+version declared in `kubernetes/providers.tf`; the Gateway and HTTPRoutes wait
+for those CRDs to be installed.
+
 Add these host overrides in OPNsense/Unbound:
 
 ```text
-hello.home.arpa      -> 192.168.1.241
+whoami.home.arpa     -> 192.168.1.241
 portainer.home.arpa  -> 192.168.1.241
 ```
 
-Test ingress without DNS:
+Test routing without DNS:
 
 ```bash
 curl -H 'Host: portainer.home.arpa' http://192.168.1.241/
+```
+
+Traefik serves HTTPS using per-application certificates issued by the in-cluster
+step-ca through cert-manager and step-issuer. Install step-ca's root certificate on each client
+that should trust these internal certificates. Export the root PEM with:
+
+```bash
+kubectl get configmap step-certificates-certs -n step-ca \
+  -o jsonpath='{.data.root_ca\.crt}' > step-ca-root.crt
+```
+
+Test HTTPS without DNS after trusting that root:
+
+```bash
+curl --cacert step-ca-root.crt \
+  --resolve portainer.home.arpa:443:192.168.1.241 \
+  https://portainer.home.arpa/
+```
+
+Headlamp is available at `https://headlamp.home.arpa`. It uses a read-only
+Kubernetes `view` role, extended to include Gateway API resources. Generate a
+login token when needed with:
+
+```bash
+kubectl create token headlamp -n headlamp
 ```
 
 ## Check The Cluster
@@ -216,10 +307,10 @@ curl -H 'Host: portainer.home.arpa' http://192.168.1.241/
 kubectl get nodes -o wide
 kubectl get pods -A
 kubectl get svc -A
-kubectl get ingress -A
+kubectl get gateways,httproutes -A
 ```
 
-A healthy cluster has all nodes `Ready`, Cilium and CSI pods running, PVCs `Bound`, and Traefik assigned `192.168.1.241`.
+A healthy cluster has all nodes `Ready`, Cilium and CSI pods running, PVCs `Bound`, the Traefik Gateway accepted, and Traefik assigned `192.168.1.241`.
 
 ## Common Recovery Commands
 
@@ -238,7 +329,7 @@ kubectl get pods -n portainer -o wide -w
 Check Portainer:
 
 ```bash
-kubectl get pods,pvc,svc,ingress -n portainer
+kubectl get pods,pvc,svc,httproute -n portainer
 ```
 
 Portainer uses one replica and persistent storage. It is designed to restart on another node, not to run multiple active replicas against the same database.
