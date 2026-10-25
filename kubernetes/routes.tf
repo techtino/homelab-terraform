@@ -1,12 +1,36 @@
+locals {
+  routed_apps = merge(
+    {
+      for name, app in local.apps_by_name : name => merge(app, {
+        namespace = kubernetes_namespace_v1.homelab_apps.metadata[0].name
+      })
+    },
+    {
+      headlamp = {
+        namespace       = "headlamp"
+        domains         = ["headlamp.home.arpa"]
+        tls_secret_name = "headlamp-tls"
+        port            = 80
+      }
+      grafana = {
+        namespace       = "observability"
+        domains         = ["grafana.home.arpa"]
+        tls_secret_name = "grafana-tls"
+        port            = 80
+      }
+    }
+  )
+}
+
 resource "kubectl_manifest" "http_routes" {
-  for_each = local.apps_by_name
+  for_each = local.routed_apps
 
   yaml_body = yamlencode({
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"
     metadata = {
       name      = each.key
-      namespace = try(each.value.module_managed, true) ? kubernetes_namespace_v1.homelab_apps.metadata[0].name : each.value.namespace
+      namespace = each.value.namespace
     }
     spec = {
       parentRefs = [{

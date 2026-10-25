@@ -25,16 +25,6 @@ locals {
         PORT = "8000"
       }
     },
-    {
-      name           = "headlamp"
-      module_managed = false
-      namespace      = "headlamp"
-    },
-    {
-      name           = "grafana"
-      module_managed = false
-      namespace      = "observability"
-    },
   ]
 
   apps_by_name = {
@@ -47,11 +37,8 @@ locals {
 }
 
 module "apps" {
-  for_each = {
-    for name, app in local.apps_by_name : name => app
-    if try(app.module_managed, true)
-  }
-  source = "./modules/app"
+  for_each = local.apps_by_name
+  source   = "./modules/app"
 
   name      = each.value.name
   namespace = kubernetes_namespace_v1.homelab_apps.metadata[0].name

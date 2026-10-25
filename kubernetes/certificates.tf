@@ -1,5 +1,5 @@
 resource "kubectl_manifest" "certificates" {
-  for_each = local.apps_by_name
+  for_each = local.routed_apps
 
   yaml_body = yamlencode({
     apiVersion = "cert-manager.io/v1"

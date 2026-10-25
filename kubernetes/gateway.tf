@@ -73,7 +73,7 @@ resource "helm_release" "traefik" {
               from = "All"
             }
             certificateRefs = [
-              for app in values(local.apps_by_name) : {
+              for app in values(local.routed_apps) : {
                 kind = "Secret"
                 name = app.tls_secret_name
               }

@@ -1,6 +1,6 @@
 resource "opnsense_unbound_host_override" "edge_services" {
   for_each = {
-    for domain in flatten([for app in values(local.apps_by_name) : app.domains]) : domain => {
+    for domain in flatten([for app in values(local.routed_apps) : app.domains]) : domain => {
       hostname = split(".", domain)[0]
       domain   = join(".", slice(split(".", domain), 1, length(split(".", domain))))
     }
