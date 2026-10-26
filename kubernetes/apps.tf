@@ -5,16 +5,15 @@ resource "kubernetes_namespace_v1" "homelab_apps" {
 }
 
 locals {
-  apps = [
-    {
-      name             = "whoami"
+  apps = {
+    whoami = {
       image            = "traefik/whoami:v1.11.0"
+      port             = 80
       data_size        = "1Gi"
       data_mount_paths = ["/app-data"]
       env              = { TZ = "Europe/London" }
-    },
-    {
-      name             = "test"
+    }
+    test = {
       image            = "ghcr.io/kljensen/hello-world-http:latest"
       port             = 8000
       data_size        = "1Gi"
@@ -24,23 +23,15 @@ locals {
         HOST = "0.0.0.0"
         PORT = "8000"
       }
-    },
-  ]
-
-  apps_by_name = {
-    for app in local.apps : app.name => merge(app, {
-      domains         = ["${app.name}.home.arpa"]
-      tls_secret_name = "${app.name}-tls"
-      port            = try(app.port, 80)
-    })
+    }
   }
 }
 
 module "apps" {
-  for_each = local.apps_by_name
+  for_each = local.apps
   source   = "./modules/app"
 
-  name      = each.value.name
+  name      = each.key
   namespace = kubernetes_namespace_v1.homelab_apps.metadata[0].name
 
   image = each.value.image

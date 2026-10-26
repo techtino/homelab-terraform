@@ -9,8 +9,8 @@ resource "kubectl_manifest" "certificates" {
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
-      secretName  = each.value.tls_secret_name
-      dnsNames    = sort(tolist(each.value.domains))
+      secretName  = "${each.key}-tls"
+      dnsNames    = ["${each.key}.${local.domain}"]
       duration    = "24h"
       renewBefore = "8h"
       issuerRef = {

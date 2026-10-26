@@ -1,32 +1,29 @@
 locals {
+  domain = "home.arpa"
+
+  # Everything served through the gateway, as name => { namespace, port }. Each
+  # entry gets an HTTPRoute, certificate and DNS record for <name>.home.arpa,
+  # with its TLS secret named <name>-tls.
+  #
+  # Module-managed apps (apps.tf) and external services (external.tf) are added
+  # automatically; list any other in-cluster Service here.
   routed_apps = merge(
     {
-      for name, app in local.apps_by_name : name => merge(app, {
+      for name, app in local.apps : name => {
         namespace = kubernetes_namespace_v1.homelab_apps.metadata[0].name
-      })
-    },
-    {
-      headlamp = {
-        namespace       = "headlamp"
-        domains         = ["headlamp.home.arpa"]
-        tls_secret_name = "headlamp-tls"
-        port            = 80
-      }
-      grafana = {
-        namespace       = "observability"
-        domains         = ["grafana.home.arpa"]
-        tls_secret_name = "grafana-tls"
-        port            = 80
+        port      = app.port
       }
     },
     {
       for name, svc in local.external_services : name => {
-        namespace       = kubernetes_namespace_v1.traefik.metadata[0].name
-        domains         = ["${name}.home.arpa"]
-        tls_secret_name = "${name}-tls"
-        port            = svc.port
+        namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+        port      = svc.port
       }
-    }
+    },
+    {
+      headlamp = { namespace = kubernetes_namespace_v1.headlamp.metadata[0].name, port = 80 }
+      grafana  = { namespace = kubernetes_namespace_v1.observability.metadata[0].name, port = 80 }
+    },
   )
 }
 
@@ -46,7 +43,7 @@ resource "kubectl_manifest" "http_routes" {
         namespace   = "traefik"
         sectionName = "websecure"
       }]
-      hostnames = sort(tolist(each.value.domains))
+      hostnames = ["${each.key}.${local.domain}"]
       rules = [{
         matches = [{
           path = {
@@ -64,9 +61,6 @@ resource "kubectl_manifest" "http_routes" {
 
   depends_on = [
     helm_release.traefik,
-    helm_release.headlamp,
-    helm_release.grafana,
     kubectl_manifest.gateway_api_crds,
-    kubernetes_endpoint_slice_v1.external_services,
   ]
 }
