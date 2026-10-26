@@ -11,8 +11,14 @@ resource "kubernetes_secret_v1" "this_env" {
   data = var.env
 }
 
+locals {
+  persistent = var.data_size != null
+}
+
 # Persistent application data
 resource "kubernetes_persistent_volume_claim_v1" "this_data" {
+  count = local.persistent ? 1 : 0
+
   metadata {
     name      = "${var.name}-data"
     namespace = var.namespace
@@ -31,15 +37,19 @@ resource "kubernetes_persistent_volume_claim_v1" "this_data" {
 }
 
 # Application workload
-resource "kubernetes_stateful_set_v1" "this" {
+resource "kubernetes_deployment_v1" "this" {
   metadata {
     name      = var.name
     namespace = var.namespace
   }
 
   spec {
-    service_name = var.name
-    replicas     = 1
+    replicas = var.replicas
+
+    # A ReadWriteOnce volume can only be mounted by one pod at a time.
+    strategy {
+      type = local.persistent ? "Recreate" : "RollingUpdate"
+    }
 
     selector {
       match_labels = {
@@ -55,6 +65,19 @@ resource "kubernetes_stateful_set_v1" "this" {
       }
 
       spec {
+        # Prefer one replica per node, but still schedule if a node is down.
+        topology_spread_constraint {
+          max_skew           = 1
+          topology_key       = "kubernetes.io/hostname"
+          when_unsatisfiable = "ScheduleAnyway"
+
+          label_selector {
+            match_labels = {
+              app = var.name
+            }
+          }
+        }
+
         container {
           name  = var.name
           image = var.image
@@ -75,8 +98,16 @@ resource "kubernetes_stateful_set_v1" "this" {
             protocol       = "TCP"
           }
 
+          # Only send traffic to pods that are accepting connections.
+          readiness_probe {
+            tcp_socket {
+              port = var.port
+            }
+            period_seconds = 2
+          }
+
           dynamic "volume_mount" {
-            for_each = toset(var.data_mount_paths)
+            for_each = local.persistent ? toset(var.data_mount_paths) : []
 
             content {
               name       = "app-data"
@@ -85,13 +116,44 @@ resource "kubernetes_stateful_set_v1" "this" {
           }
         }
 
-        volume {
-          name = "app-data"
+        dynamic "volume" {
+          for_each = local.persistent ? [1] : []
 
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.this_data.metadata[0].name
+          content {
+            name = "app-data"
+
+            persistent_volume_claim {
+              claim_name = kubernetes_persistent_volume_claim_v1.this_data[0].metadata[0].name
+            }
           }
         }
+      }
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !(local.persistent && var.replicas > 1)
+      error_message = "Apps with persistent data (data_size) can only run one replica."
+    }
+  }
+}
+
+# Keep at least one replica running through node drains.
+resource "kubernetes_pod_disruption_budget_v1" "this" {
+  count = var.replicas > 1 ? 1 : 0
+
+  metadata {
+    name      = var.name
+    namespace = var.namespace
+  }
+
+  spec {
+    min_available = 1
+
+    selector {
+      match_labels = {
+        app = var.name
       }
     }
   }

@@ -28,11 +28,17 @@ variable "env" {
   nullable    = false
 }
 
+variable "replicas" {
+  type        = number
+  description = "Number of replicas. More than one requires a stateless app (no data_size)."
+  default     = 1
+  nullable    = false
+}
+
 variable "data_size" {
   type        = string
-  description = "Size of the application's persistent volume claim."
-  default     = "5Gi"
-  nullable    = false
+  description = "Size of the app's persistent volume claim, or null for a stateless app."
+  default     = null
 }
 
 variable "data_mount_paths" {
