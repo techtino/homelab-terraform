@@ -21,6 +21,9 @@ resource "helm_release" "traefik" {
         replicas = 2
       }
 
+      # External services (proxmox, router, truenas) use self-signed certs.
+      additionalArguments = ["--serversTransport.insecureSkipVerify=true"]
+
       service = {
         type = "LoadBalancer"
         spec = {

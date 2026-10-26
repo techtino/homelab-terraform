@@ -18,6 +18,14 @@ locals {
         tls_secret_name = "grafana-tls"
         port            = 80
       }
+    },
+    {
+      for name, svc in local.external_services : name => {
+        namespace       = kubernetes_namespace_v1.traefik.metadata[0].name
+        domains         = ["${name}.home.arpa"]
+        tls_secret_name = "${name}-tls"
+        port            = svc.port
+      }
     }
   )
 }
@@ -34,8 +42,9 @@ resource "kubectl_manifest" "http_routes" {
     }
     spec = {
       parentRefs = [{
-        name      = "traefik-gateway"
-        namespace = "traefik"
+        name        = "traefik-gateway"
+        namespace   = "traefik"
+        sectionName = "websecure"
       }]
       hostnames = sort(tolist(each.value.domains))
       rules = [{
@@ -58,5 +67,6 @@ resource "kubectl_manifest" "http_routes" {
     helm_release.headlamp,
     helm_release.grafana,
     kubectl_manifest.gateway_api_crds,
+    kubernetes_endpoint_slice_v1.external_services,
   ]
 }
