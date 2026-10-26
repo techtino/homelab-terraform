@@ -21,5 +21,5 @@ resource "kubectl_manifest" "certificates" {
     }
   })
 
-  depends_on = [helm_release.step_issuer]
+  depends_on = [kubectl_manifest.step_cluster_issuer]
 }

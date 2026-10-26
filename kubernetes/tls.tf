@@ -25,13 +25,16 @@ resource "kubernetes_namespace_v1" "step_ca" {
 }
 
 resource "helm_release" "step_ca" {
-  name            = "step-certificates"
-  namespace       = kubernetes_namespace_v1.step_ca.metadata[0].name
-  repository      = "https://smallstep.github.io/helm-charts"
-  chart           = "step-certificates"
-  version         = "1.30.0"
-  upgrade_install = true
-  timeout         = 900
+  name       = "step-certificates"
+  namespace  = kubernetes_namespace_v1.step_ca.metadata[0].name
+  repository = "https://smallstep.github.io/helm-charts"
+  chart      = "step-certificates"
+  version    = "1.30.0"
+  timeout    = 900
+
+  # The chart's bootstrap Job generates the CA and fills the configmaps read
+  # below; it only runs on first install, so wait for it to finish.
+  wait_for_jobs = true
 
   values = [
     yamlencode({
@@ -93,29 +96,37 @@ resource "helm_release" "step_issuer" {
   values = [
     yamlencode({
       fullnameOverride = "step-issuer"
-      stepClusterIssuer = {
-        create = true
-        caUrl  = local.step_ca_url
-        caBundle = base64encode(
-          data.kubernetes_config_map_v1.step_ca_certs.data["root_ca.crt"]
-        )
-        provisioner = {
-          name = "admin"
-          kid  = local.step_ca_provisioner_kid
-          passwordRef = {
-            name      = "step-certificates-provisioner-password"
-            namespace = kubernetes_namespace_v1.step_ca.metadata[0].name
-            key       = "password"
-          }
-        }
-      }
     })
   ]
 
-  depends_on = [
-    helm_release.cert_manager,
-    helm_release.step_ca,
-    data.kubernetes_config_map_v1.step_ca_certs,
-    data.kubernetes_config_map_v1.step_ca_config,
-  ]
+  depends_on = [helm_release.cert_manager]
+}
+
+# Managed outside the chart so drift (e.g. a stale kid or caBundle after the CA
+# is regenerated) is detected and corrected; Helm only patches changed values.
+resource "kubectl_manifest" "step_cluster_issuer" {
+  yaml_body = yamlencode({
+    apiVersion = "certmanager.step.sm/v1beta1"
+    kind       = "StepClusterIssuer"
+    metadata = {
+      name = "step-issuer"
+    }
+    spec = {
+      url = local.step_ca_url
+      caBundle = base64encode(
+        data.kubernetes_config_map_v1.step_ca_certs.data["root_ca.crt"]
+      )
+      provisioner = {
+        name = "admin"
+        kid  = local.step_ca_provisioner_kid
+        passwordRef = {
+          name      = "step-certificates-provisioner-password"
+          namespace = kubernetes_namespace_v1.step_ca.metadata[0].name
+          key       = "password"
+        }
+      }
+    }
+  })
+
+  depends_on = [helm_release.step_issuer]
 }
