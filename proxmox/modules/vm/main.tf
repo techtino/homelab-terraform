@@ -105,8 +105,3 @@ resource "proxmox_virtual_environment_vm" "this" {
     type = "l26"
   }
 }
-
-moved {
-  from = proxmox_virtual_environment_file.user_data[0]
-  to   = proxmox_virtual_environment_file.user_data
-}

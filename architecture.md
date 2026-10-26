@@ -27,7 +27,7 @@ flowchart TB
 
   subgraph K8s["Kubernetes cluster · Cilium CNI and kube-proxy replacement"]
     subgraph Edge["Ingress edge · traefik namespace"]
-      LB["Traefik Service<br/>LoadBalancer 192.168.1.241<br/>2 replicas"]
+      LB["Traefik Service<br/>LoadBalancer 192.168.1.241<br/>externalTrafficPolicy Local<br/>2 replicas"]
       GW["Traefik Gateway<br/>HTTP :8000 · HTTPS :8443"]
       Routes["HTTPRoutes<br/>hostname and path routing"]
       LB --> GW --> Routes
@@ -43,13 +43,13 @@ flowchart TB
     end
 
     subgraph AppNS["homelab-apps namespace · app module"]
-      Who["whoami Service → Pod"]
+      Who["whoami Service → 2 Pods<br/>stateless, one per worker"]
       Test["test Service :8000 → Pod"]
-      WhoPVC[("whoami PVC")]
       TestPVC[("test PVC")]
-      Who --- WhoPVC
       Test --- TestPVC
     end
+
+    External["proxmox · router · truenas<br/>selector-less Services in traefik namespace"]
 
     subgraph HeadlampNS["headlamp namespace"]
       Head["Headlamp Service → Pod"]
@@ -78,14 +78,14 @@ flowchart TB
     Routes -->|"test.home.arpa"| Test
     Routes -->|"headlamp.home.arpa"| Head
     Routes -->|"grafana.home.arpa"| Grafana
+    Routes -->|"proxmox / router / truenas.home.arpa"| External
   end
 
   MetalLB -. "advertises LoadBalancer IP" .-> LB
   W1 --- NAS
   W2 --- NAS
   CP --- NAS
-  NAS -. "CSI NVMe-oF PVC volumes" .-> WhoPVC
-  NAS -.-> TestPVC
+  NAS -. "CSI NVMe-oF PVC volumes" .-> TestPVC
   NAS -.-> VM
   NAS -.-> VL
 
@@ -97,7 +97,8 @@ flowchart TB
 ## Request and data paths
 
 - Clients resolve each `*.home.arpa` app name through OPNsense to the Traefik LoadBalancer IP.
-- Traefik redirects HTTP to HTTPS. The Gateway selects a certificate and HTTPRoute, then sends traffic to the app Service.
+- Traefik redirects HTTP to HTTPS. The Gateway selects a certificate and HTTPRoute, then sends traffic to the app's pods, retrying another pod if one can't be reached.
+- proxmox, router and truenas are routed the same way, to their LAN IPs through selector-less Services.
 - cert-manager requests an individual certificate through the StepClusterIssuer and step-ca. The resulting Secrets are referenced by the Traefik Gateway listener.
 - vmagent scrapes cluster metrics and writes them to VictoriaMetrics; vlagent collects Kubernetes logs and writes them to VictoriaLogs. Grafana queries both stores and loads dashboards from ConfigMaps.
 - Proxmox runs one control-plane VM and two worker VMs. Cilium provides cluster networking and replaces kube-proxy. TrueNAS supplies persistent volumes through its NVMe-oF CSI driver.

@@ -9,7 +9,9 @@ The cluster uses:
 - MetalLB for LAN load balancer IPs
 - Traefik with Kubernetes Gateway API
 - TrueNAS NVMe-oF storage through the TrueNAS CSI driver
-- Portainer for web management
+- cert-manager with an in-cluster step-ca for internal TLS
+- Headlamp for web management
+- VictoriaMetrics, VictoriaLogs and Grafana for observability
 
 ## Before You Start
 
@@ -156,12 +158,13 @@ This installs and manages:
 
 - Cilium
 - MetalLB
-- Traefik
-- TrueNAS CSI
-- StorageClasses and PVCs
+- Traefik, the Gateway, HTTPRoutes and OPNsense DNS overrides
+- cert-manager, step-ca and step-issuer
+- TrueNAS CSI and the `truenas-nvmeof` StorageClass
 - Metrics Server with CA-verified kubelet connections
-- Portainer
-- The example `hello` application
+- Headlamp
+- VictoriaMetrics, VictoriaLogs and Grafana
+- The apps in `kubernetes/apps.tf` (`whoami`, `test`)
 
 ## Storage
 
@@ -178,26 +181,9 @@ The Kubernetes nodes need `open-iscsi` and `nvme-cli`. Cloud-init installs them 
 
 ## Kubelet serving certificates
 
-Kubeadm is configured to request CA-signed kubelet serving certificates through
-the Kubernetes CSR API. Metrics Server trusts the kubeadm cluster CA and uses
-node IPs, so cluster DNS does not need node records.
-
-For an existing cluster, apply the kubelet ConfigMap and Metrics Server changes
-from the `kubernetes` directory:
-
-```bash
-cd ~/homelab-terraform/kubernetes
-tofu apply -target=helm_release.metrics_server
-```
-
-On each existing node, enable serving-certificate requests in the local kubelet
-configuration and restart kubelet:
-
-```bash
-sudo sed -i '/^serverTLSBootstrap:/d' /var/lib/kubelet/config.yaml
-printf '\nserverTLSBootstrap: true\n' | sudo tee -a /var/lib/kubelet/config.yaml
-sudo systemctl restart kubelet
-```
+Kubeadm is configured (through cloud-init) to request CA-signed kubelet serving
+certificates through the Kubernetes CSR API. Metrics Server trusts the kubeadm
+cluster CA and uses node IPs, so cluster DNS does not need node records.
 
 Inspect each `kubernetes.io/kubelet-serving` CSR. Check its requested node
 identity and IP SANs before approving it:
@@ -220,9 +206,6 @@ kubectl get apiservice v1beta1.metrics.k8s.io
 kubectl top nodes
 ```
 
-The Portainer namespace should finish deleting after the Metrics API becomes
-available.
-
 Check storage with:
 
 ```bash
@@ -234,16 +217,31 @@ kubectl get pv
 
 PVCs use `Retain`, so deleting a claim may leave data behind in TrueNAS. Treat PVC and PV deletion as data-destructive operations and check the corresponding TrueNAS volume first.
 
-App modules can also mount existing node directories as host paths. Set
-`extra_volumes` to map each node path to its container mount path:
+## Adding An App
+
+Everything served through the gateway gets `<name>.home.arpa`, a certificate
+in a `<name>-tls` secret, an HTTPRoute and an OPNsense DNS override, all derived
+from the name:
+
+- Simple container apps: add an entry to `local.apps` in `kubernetes/apps.tf`.
+- Devices outside the cluster: add an IP and port to `local.external_services`
+  in `kubernetes/external.tf`.
+- Any other in-cluster Service (for example from a Helm chart): add
+  `name = { namespace, port }` to `local.routed_apps` in `kubernetes/routes.tf`.
+  The Service must be called `name`.
+
+Apps in `apps.tf` are stateless unless they set `data_size`. A stateless app can
+set `replicas` above 1; it then gets one replica per node where possible and a
+PodDisruptionBudget. An app with `data_size` gets a ReadWriteOnce PVC and always
+runs a single replica.
 
 ```hcl
-extra_volumes = {
-  "/mnt/media" = "/media"
+whoami = {
+  image    = "traefik/whoami:v1.11.0"
+  port     = 80
+  replicas = 2
 }
 ```
-
-The node path must already exist on whichever node runs the app.
 
 ## DNS And Gateway API
 
@@ -263,17 +261,14 @@ Terraform downloads and manages the Gateway API standard CRDs at the pinned
 version declared in `kubernetes/providers.tf`; the Gateway and HTTPRoutes wait
 for those CRDs to be installed.
 
-Add these host overrides in OPNsense/Unbound:
-
-```text
-whoami.home.arpa     -> 192.168.1.241
-portainer.home.arpa  -> 192.168.1.241
-```
+OpenTofu creates an OPNsense/Unbound host override pointing each app's
+`<name>.home.arpa` at `192.168.1.241`. Clients must use OPNsense for DNS to
+resolve them.
 
 Test routing without DNS:
 
 ```bash
-curl -H 'Host: portainer.home.arpa' http://192.168.1.241/
+curl -H 'Host: whoami.home.arpa' http://192.168.1.241/
 ```
 
 Traefik serves HTTPS using per-application certificates issued by the in-cluster
@@ -289,13 +284,15 @@ Test HTTPS without DNS after trusting that root:
 
 ```bash
 curl --cacert step-ca-root.crt \
-  --resolve portainer.home.arpa:443:192.168.1.241 \
-  https://portainer.home.arpa/
+  --resolve whoami.home.arpa:443:192.168.1.241 \
+  https://whoami.home.arpa/
 ```
 
-Headlamp is available at `https://headlamp.home.arpa`. It uses a read-only
-Kubernetes `view` role, extended to include Gateway API resources. Generate a
-login token when needed with:
+Headlamp is available at `https://headlamp.home.arpa`. It uses the Kubernetes
+`view` role plus an extra role (`headlamp-gateway-readonly`) that adds read access
+to Gateway API, storage, networking and other cluster resources, including
+Secrets, and permission to delete events. Generate a login token when needed
+with:
 
 ```bash
 kubectl create token headlamp -n headlamp
@@ -312,24 +309,43 @@ kubectl get gateways,httproutes -A
 
 A healthy cluster has all nodes `Ready`, Cilium and CSI pods running, PVCs `Bound`, the Traefik Gateway accepted, and Traefik assigned `192.168.1.241`.
 
+## Availability
+
+With two workers, a stateless app with `replicas = 2` keeps serving through pod
+restarts, node drains and a worker crash:
+
+- Traefik reloads endpoints within 200ms, so a pod that is shutting down stops
+  receiving traffic almost immediately.
+- Traefik retries requests that couldn't reach a backend (1s connect timeout,
+  3 attempts), so a pod on a crashed node is retried on another pod.
+- The controller manager marks a dead node `NotReady` after 20s
+  (`node-monitor-grace-period`, set in cloud-init).
+- The Traefik Service uses `externalTrafficPolicy: Local`: apps see the real
+  client IP, and MetalLB moves `192.168.1.241` to another node if its Traefik
+  pod or node goes away. That move takes about 6 seconds.
+
+In a hard-stop test of the worker holding `192.168.1.241`, `whoami` lost 2
+requests while the IP moved, then served everything from the other worker.
+
+Single points of failure remain: the Proxmox host, TrueNAS, the single
+control-plane node (and its etcd) and step-ca. Apps with persistent data run one
+replica and are unavailable until rescheduled.
+
+The current cluster was created before cloud-init set the controller-manager,
+scheduler and etcd flags, so they were added to the live static-pod manifests
+and the `kubeadm-config` ConfigMap by hand. `kubeadm upgrade diff` should show
+no changes; if it does, update `kubeadm-config` before upgrading.
+
 ## Common Recovery Commands
 
 Return a node to scheduling after a maintenance test:
 
 ```bash
-kubectl uncordon k8s-worker3
+kubectl uncordon k8s-worker1
 ```
 
-Watch Portainer move between nodes:
+Watch app replicas move between nodes:
 
 ```bash
-kubectl get pods -n portainer -o wide -w
+kubectl get pods -n homelab-apps -o wide -w
 ```
-
-Check Portainer:
-
-```bash
-kubectl get pods,pvc,svc,httproute -n portainer
-```
-
-Portainer uses one replica and persistent storage. It is designed to restart on another node, not to run multiple active replicas against the same database.
