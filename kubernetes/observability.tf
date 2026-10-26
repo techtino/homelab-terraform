@@ -112,6 +112,12 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
         enabled = false
       }
 
+      # Nothing sends alerts without vmalert, and its generated StatefulSet name
+      # pushes the pod's controller-revision-hash label past 63 characters.
+      alertmanager = {
+        enabled = false
+      }
+
       kubeEtcd = {
         enabled = true
         service = {
