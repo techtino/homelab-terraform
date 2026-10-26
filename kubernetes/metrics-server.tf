@@ -32,8 +32,5 @@ resource "helm_release" "metrics_server" {
     })
   ]
 
-  depends_on = [
-    helm_release.cilium,
-    kubernetes_config_map_v1_data.kubelet_config,
-  ]
+  depends_on = [helm_release.cilium]
 }

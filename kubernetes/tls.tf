@@ -54,7 +54,6 @@ resource "helm_release" "step_ca" {
   ]
 
   depends_on = [
-    kubernetes_namespace_v1.step_ca,
     helm_release.truenas_csi,
     kubernetes_storage_class_v1.truenas_nvmeof,
   ]

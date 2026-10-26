@@ -12,24 +12,18 @@ locals {
 
   kubernetes_vms = {
     control = {
-      name        = "k8s-control"
       vm_id       = 106
       role        = "control"
-      master      = true
       mac_address = "BC:24:11:9A:81:A7"
     }
     worker1 = {
-      name        = "k8s-worker1"
       vm_id       = 107
       role        = "worker"
-      master      = false
       mac_address = null
     }
     worker2 = {
-      name        = "k8s-worker2"
       vm_id       = 108
       role        = "worker"
-      master      = false
       mac_address = null
     }
   }
@@ -47,7 +41,7 @@ module "kubernetes_vm" {
   for_each = local.kubernetes_vms
   source   = "./modules/vm"
 
-  vm_name                     = each.value.name
+  vm_name                     = "k8s-${each.key}"
   vm_id                       = each.value.vm_id
   node_name                   = var.proxmox_node_name
   cloud_image_id              = proxmox_download_file.debian_cloud_image.id
@@ -57,8 +51,7 @@ module "kubernetes_vm" {
   user_data = templatefile(
     "${path.module}/cloud-init/${each.value.role}.yaml.tftpl",
     {
-      hostname            = each.value.name
-      master              = each.value.master
+      hostname            = "k8s-${each.key}"
       kubernetes_pod_cidr = var.kubernetes_pod_cidr
       ssh_username        = var.ssh_username
       ssh_password_hash   = var.ssh_password_hash

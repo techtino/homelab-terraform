@@ -88,7 +88,6 @@ resource "helm_release" "traefik" {
   ]
 
   depends_on = [
-    kubernetes_namespace_v1.traefik,
     helm_release.cilium,
     kubectl_manifest.gateway_api_crds,
     kubectl_manifest.certificates,

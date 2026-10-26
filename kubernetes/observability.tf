@@ -4,6 +4,11 @@ resource "kubernetes_namespace_v1" "observability" {
   }
 }
 
+locals {
+  victoria_metrics_url = "http://vmsingle-victoria-metrics-single-server.observability.svc:8428"
+  victoria_logs_url    = "http://vlogs-victoria-logs-single-server.observability.svc:9428"
+}
+
 resource "helm_release" "victoria_logs" {
   name       = "vlogs"
   namespace  = kubernetes_namespace_v1.observability.metadata[0].name
@@ -48,7 +53,7 @@ resource "helm_release" "victoria_logs_collector" {
       }]
 
       remoteWrite = [{
-        url = "http://vlogs-victoria-logs-single-server.observability.svc:9428"
+        url = local.victoria_logs_url
       }]
     })
   ]
@@ -67,7 +72,7 @@ resource "helm_release" "victoria_metrics" {
   values = [
     yamlencode({
       server = {
-        retentionPeriod = "1"
+        retentionPeriod = "1" # months
         persistentVolume = {
           enabled          = true
           size             = "100Gi"
@@ -172,7 +177,7 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
         enabled = true
         spec = {
           remoteWrite = [{
-            url = "http://vmsingle-victoria-metrics-single-server.observability.svc:8428/api/v1/write"
+            url = "${local.victoria_metrics_url}/api/v1/write"
           }]
         }
       }
@@ -248,21 +253,21 @@ resource "helm_release" "grafana" {
               name      = "VictoriaMetrics"
               type      = "victoriametrics-metrics-datasource"
               access    = "proxy"
-              url       = "http://vmsingle-victoria-metrics-single-server.observability.svc:8428"
+              url       = local.victoria_metrics_url
               isDefault = true
             },
             {
               name   = "Prometheus"
               type   = "prometheus"
               access = "proxy"
-              url    = "http://vmsingle-victoria-metrics-single-server.observability.svc:8428"
+              url    = local.victoria_metrics_url
               uid    = "prometheus"
             },
             {
               name   = "VictoriaLogs"
               type   = "victoriametrics-logs-datasource"
               access = "proxy"
-              url    = "http://vlogs-victoria-logs-single-server.observability.svc:9428"
+              url    = local.victoria_logs_url
             },
           ]
         }
@@ -271,10 +276,7 @@ resource "helm_release" "grafana" {
   ]
 
   depends_on = [
-    helm_release.traefik,
-    helm_release.step_issuer,
     helm_release.victoria_logs,
     helm_release.victoria_metrics,
   ]
 }
-

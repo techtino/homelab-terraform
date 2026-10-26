@@ -21,3 +21,9 @@ variable "cilium_k8s_api_port" {
   type        = number
   default     = 6443
 }
+
+variable "truenas_api_key" {
+  description = "TrueNAS API key for the CSI driver"
+  type        = string
+  sensitive   = true
+}

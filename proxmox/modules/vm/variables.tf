@@ -16,17 +16,10 @@ variable "node_name" {
 variable "cloud_image_id" {
   description = "Proxmox file ID of the Debian cloud image to import."
   type        = string
-  default     = null
-}
-
-variable "existing_disk_path" {
-  description = "Existing VM disk path to preserve instead of importing the cloud image."
-  type        = string
-  default     = null
 }
 
 variable "network_mac_address" {
-  description = "Existing VM network MAC address, if preserving an existing VM."
+  description = "Fixed MAC address for the VM network device, or null to generate one."
   type        = string
   default     = null
 }
@@ -49,13 +42,6 @@ variable "cloud_init_iso_datastore_id" {
 variable "user_data" {
   description = "Complete cloud-init user-data document, including the #cloud-config header."
   type        = string
-  default     = null
-}
-
-variable "ipv4_address" {
-  description = "IPv4 address for cloud-init networking, or dhcp."
-  type        = string
-  default     = "dhcp"
 }
 
 variable "network_bridge" {

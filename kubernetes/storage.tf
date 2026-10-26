@@ -1,9 +1,3 @@
-variable "truenas_api_key" {
-  description = "TrueNAS API key for the CSI driver"
-  type        = string
-  sensitive   = true
-}
-
 resource "helm_release" "truenas_csi" {
   name            = "truenas-csi"
   namespace       = kubernetes_namespace_v1.truenas_csi.metadata[0].name

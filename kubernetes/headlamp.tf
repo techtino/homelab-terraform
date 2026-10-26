@@ -4,9 +4,9 @@ resource "kubernetes_namespace_v1" "headlamp" {
   }
 }
 
-# Grant Headlamp read-only access to additional cluster resources. Keep this
-# separate from the built-in `view` role so these permissions are not granted
-# to every subject bound to `view`.
+# Extra permissions on top of the built-in `view` role: read access to cluster
+# resources `view` omits (including secrets), plus deleting events. Kept
+# separate so they are not granted to every subject bound to `view`.
 resource "kubectl_manifest" "headlamp_gateway_readonly" {
   yaml_body = yamlencode({
     apiVersion = "rbac.authorization.k8s.io/v1"
@@ -152,7 +152,6 @@ resource "helm_release" "headlamp" {
   ]
 
   depends_on = [
-    kubernetes_namespace_v1.headlamp,
     helm_release.traefik,
     helm_release.metrics_server,
     kubectl_manifest.gateway_api_crds,

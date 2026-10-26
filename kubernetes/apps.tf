@@ -29,8 +29,8 @@ locals {
 
   apps_by_name = {
     for app in local.apps : app.name => merge(app, {
-      domains         = concat(try(app.domains, ["${app.name}.home.arpa"]), try(app.additional_domains, []))
-      tls_secret_name = try(app.tls_secret_name, "${app.name}-tls")
+      domains         = ["${app.name}.home.arpa"]
+      tls_secret_name = "${app.name}-tls"
       port            = try(app.port, 80)
     })
   }
@@ -48,8 +48,6 @@ module "apps" {
 
   data_size        = try(each.value.data_size, null)
   data_mount_paths = try(each.value.data_mount_paths, null)
-  extra_volumes    = try(each.value.extra_volumes, null)
-  extra_ports      = try(each.value.extra_ports, null)
   env              = try(each.value.env, null)
 
   depends_on = [kubernetes_storage_class_v1.truenas_nvmeof]
