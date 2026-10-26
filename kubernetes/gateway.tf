@@ -21,13 +21,24 @@ resource "helm_release" "traefik" {
         replicas = 2
       }
 
-      # External services (proxmox, router, truenas) use self-signed certs.
-      additionalArguments = ["--serversTransport.insecureSkipVerify=true"]
+      additionalArguments = [
+        # External services (proxmox, router, truenas) use self-signed certs.
+        "--serversTransport.insecureSkipVerify=true",
+        # Pick up endpoint changes quickly (default 2s), so a pod that is
+        # shutting down stops receiving traffic almost immediately.
+        "--providers.providersThrottleDuration=200ms",
+        # Fail fast on an unreachable backend (default 30s) so the retry
+        # middleware below can try another pod.
+        "--serversTransport.forwardingTimeouts.dialTimeout=1s",
+      ]
 
       service = {
         type = "LoadBalancer"
         spec = {
           loadBalancerIP = local.gateway_ip
+          # Deliver only to the Traefik pod on the node MetalLB announces from:
+          # no extra hop between nodes, and Traefik sees the real client IP.
+          externalTrafficPolicy = "Local"
         }
       }
 
@@ -43,6 +54,11 @@ resource "helm_release" "traefik" {
             }
           }
         }
+        websecure = {
+          http = {
+            middlewares = ["traefik-retry@kubernetescrd"]
+          }
+        }
       }
 
       providers = {
@@ -52,8 +68,9 @@ resource "helm_release" "traefik" {
         kubernetesGateway = {
           enabled = true
         }
+        # Only used for the retry Middleware below.
         kubernetesCRD = {
-          enabled = false
+          enabled = true
         }
       }
 
@@ -84,6 +101,25 @@ resource "helm_release" "traefik" {
           }
         }
       }
+
+      # Retry requests that couldn't reach a backend, e.g. a pod on a node that
+      # has died but isn't marked NotReady yet. Applied to every route on
+      # websecure. Traefik stops as soon as a backend replies (any status), so
+      # a request is only re-sent if no backend answered it.
+      extraObjects = [{
+        apiVersion = "traefik.io/v1alpha1"
+        kind       = "Middleware"
+        metadata = {
+          name      = "retry"
+          namespace = "traefik"
+        }
+        spec = {
+          retry = {
+            attempts        = 3
+            initialInterval = "100ms"
+          }
+        }
+      }]
     })
   ]
 
