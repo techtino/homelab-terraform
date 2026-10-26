@@ -75,6 +75,10 @@ write_files:
         extraArgs:
           - name: bind-address
             value: 0.0.0.0
+          # Mark a dead node NotReady after 20s instead of 50s, so its pods
+          # stop receiving traffic sooner.
+          - name: node-monitor-grace-period
+            value: 20s
       scheduler:
         extraArgs:
           - name: bind-address
