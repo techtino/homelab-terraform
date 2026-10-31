@@ -19,13 +19,36 @@ resource "helm_release" "truenas_csi" {
         existingSecret    = "truenas-api-credentials"
         existingSecretKey = "api-key"
       }
+
+      # Deleting a VolumeSnapshot also deletes the ZFS snapshot on TrueNAS.
+      volumeSnapshotClass = {
+        enabled        = true
+        deletionPolicy = "Delete"
+        annotations = {
+          "snapshot.storage.kubernetes.io/is-default-class" = "true"
+        }
+      }
     })
   ]
 
   depends_on = [
     kubernetes_secret_v1.truenas_api_credentials,
     helm_release.cilium,
+    helm_release.snapshot_controller,
   ]
+}
+
+# VolumeSnapshot CRDs and the controller that handles them. The TrueNAS CSI
+# driver's csi-snapshotter sidecar needs both for PVC snapshots.
+resource "helm_release" "snapshot_controller" {
+  name       = "snapshot-controller"
+  namespace  = "kube-system"
+  repository = "https://piraeus.io/helm-charts/"
+  chart      = "snapshot-controller"
+  version    = "5.4.0"
+  timeout    = 900
+
+  depends_on = [helm_release.cilium]
 }
 
 resource "kubernetes_secret_v1" "truenas_api_credentials" {

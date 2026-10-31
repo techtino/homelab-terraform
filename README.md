@@ -181,6 +181,28 @@ StorageClass:  truenas-nvmeof
 
 The Kubernetes nodes need `open-iscsi` and `nvme-cli`. Cloud-init installs them automatically.
 
+PVCs can be snapshotted. `snapshot-controller` in `kube-system` provides the
+VolumeSnapshot API, and `truenas-snapshotclass` is the default
+VolumeSnapshotClass. Each VolumeSnapshot is a ZFS snapshot on TrueNAS, and
+deleting the VolumeSnapshot deletes it. To snapshot a PVC:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: test-data-before-upgrade
+  namespace: homelab-apps
+spec:
+  source:
+    persistentVolumeClaimName: <pvc-name>
+EOF
+kubectl get volumesnapshot -n homelab-apps
+```
+
+To restore, create a new PVC with `dataSource` pointing at the VolumeSnapshot
+(`kind: VolumeSnapshot`, `apiGroup: snapshot.storage.k8s.io`).
+
 ## Kubelet serving certificates
 
 Kubeadm is configured (through cloud-init) to request CA-signed kubelet serving
