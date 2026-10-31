@@ -43,6 +43,10 @@ write_files:
         version: 2
         ethernets:
           eth0:
+            # Proxmox passes the search domain to cloud-init, but cloud-init
+            # drops global DNS settings for DHCP-only interfaces.
+            nameservers:
+              search: [home.arpa]
             dhcp4-overrides:
               send-hostname: true
               hostname: ${hostname}
