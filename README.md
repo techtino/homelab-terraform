@@ -230,6 +230,12 @@ from the name:
   `name = { namespace, port }` to `local.routed_apps` in `kubernetes/routes.tf`.
   The Service must be called `name`.
 
+Set `auth = true` on an entry to put it behind basic auth (Traefik's basicAuth
+middleware, `kubernetes/auth.tf`). It is on for whoami, test and headlamp, and
+off for apps that have their own login. Set or change the credentials with
+`scripts/set-basic-auth.sh [username]`, which writes
+`TF_VAR_basic_auth_htpasswd` to `.env`, then re-apply.
+
 Apps in `apps.tf` are stateless unless they set `data_size`. A stateless app can
 set `replicas` above 1; it then gets one replica per node where possible and a
 PodDisruptionBudget. An app with `data_size` gets a ReadWriteOnce PVC and always

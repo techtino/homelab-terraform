@@ -1,9 +1,10 @@
 locals {
   domain = "home.arpa"
 
-  # Everything served through the gateway, as name => { namespace, port }. Each
-  # entry gets an HTTPRoute, certificate and DNS record for <name>.home.arpa,
-  # with its TLS secret named <name>-tls.
+  # Everything served through the gateway, as name => { namespace, port, auth }.
+  # Each entry gets an HTTPRoute, certificate and DNS record for
+  # <name>.home.arpa, with its TLS secret named <name>-tls. auth = true puts the
+  # route behind basic auth (auth.tf).
   #
   # Module-managed apps (apps.tf) and external services (external.tf) are added
   # automatically; list any other in-cluster Service here.
@@ -12,17 +13,19 @@ locals {
       for name, app in local.apps : name => {
         namespace = kubernetes_namespace_v1.homelab_apps.metadata[0].name
         port      = app.port
+        auth      = try(app.auth, false)
       }
     },
     {
       for name, svc in local.external_services : name => {
         namespace = kubernetes_namespace_v1.traefik.metadata[0].name
         port      = svc.port
+        auth      = false # these have their own login
       }
     },
     {
-      headlamp = { namespace = kubernetes_namespace_v1.headlamp.metadata[0].name, port = 80 }
-      grafana  = { namespace = kubernetes_namespace_v1.observability.metadata[0].name, port = 80 }
+      headlamp = { namespace = kubernetes_namespace_v1.headlamp.metadata[0].name, port = 80, auth = true }
+      grafana  = { namespace = kubernetes_namespace_v1.observability.metadata[0].name, port = 80, auth = false }
     },
   )
 }
@@ -44,23 +47,36 @@ resource "kubectl_manifest" "http_routes" {
         sectionName = "websecure"
       }]
       hostnames = ["${each.key}.${local.domain}"]
-      rules = [{
-        matches = [{
-          path = {
-            type  = "PathPrefix"
-            value = "/"
-          }
-        }]
-        backendRefs = [{
-          name = each.key
-          port = each.value.port
-        }]
-      }]
+      rules = [merge(
+        {
+          matches = [{
+            path = {
+              type  = "PathPrefix"
+              value = "/"
+            }
+          }]
+          backendRefs = [{
+            name = each.key
+            port = each.value.port
+          }]
+        },
+        each.value.auth ? {
+          filters = [{
+            type = "ExtensionRef"
+            extensionRef = {
+              group = "traefik.io"
+              kind  = "Middleware"
+              name  = "basic-auth"
+            }
+          }]
+        } : {},
+      )]
     }
   })
 
   depends_on = [
     helm_release.traefik,
     kubectl_manifest.gateway_api_crds,
+    kubectl_manifest.basic_auth,
   ]
 }

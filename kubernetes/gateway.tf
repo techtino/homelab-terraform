@@ -56,7 +56,11 @@ resource "helm_release" "traefik" {
         }
         websecure = {
           http = {
-            middlewares = ["traefik-retry@kubernetescrd"]
+            # Strip client-supplied X-Remote-User before basic auth sets it.
+            middlewares = [
+              "traefik-strip-remote-user@kubernetescrd",
+              "traefik-retry@kubernetescrd",
+            ]
           }
         }
       }
@@ -106,20 +110,39 @@ resource "helm_release" "traefik" {
       # has died but isn't marked NotReady yet. Applied to every route on
       # websecure. Traefik stops as soon as a backend replies (any status), so
       # a request is only re-sent if no backend answered it.
-      extraObjects = [{
-        apiVersion = "traefik.io/v1alpha1"
-        kind       = "Middleware"
-        metadata = {
-          name      = "retry"
-          namespace = "traefik"
-        }
-        spec = {
-          retry = {
-            attempts        = 3
-            initialInterval = "100ms"
+      extraObjects = [
+        {
+          apiVersion = "traefik.io/v1alpha1"
+          kind       = "Middleware"
+          metadata = {
+            name      = "retry"
+            namespace = "traefik"
           }
-        }
-      }]
+          spec = {
+            retry = {
+              attempts        = 3
+              initialInterval = "100ms"
+            }
+          }
+        },
+        {
+          # An empty value removes the header, so apps only ever see the
+          # X-Remote-User that basic auth sets (auth.tf).
+          apiVersion = "traefik.io/v1alpha1"
+          kind       = "Middleware"
+          metadata = {
+            name      = "strip-remote-user"
+            namespace = "traefik"
+          }
+          spec = {
+            headers = {
+              customRequestHeaders = {
+                "X-Remote-User" = ""
+              }
+            }
+          }
+        },
+      ]
     })
   ]
 

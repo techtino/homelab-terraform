@@ -27,3 +27,9 @@ variable "truenas_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "basic_auth_htpasswd" {
+  description = "htpasswd lines (user:bcrypt-hash, one per line) for routes with auth = true."
+  type        = string
+  sensitive   = true
+}
