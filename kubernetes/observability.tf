@@ -7,6 +7,28 @@ resource "kubernetes_namespace_v1" "observability" {
 locals {
   victoria_metrics_url = "http://vmsingle-victoria-metrics-single-server.observability.svc:8428"
   victoria_logs_url    = "http://vlogs-victoria-logs-single-server.observability.svc:9428"
+
+  # Requests are close to observed usage so the scheduler can place pods by
+  # real load. Memory limits stop a leak from exhausting a node. No CPU limits,
+  # which would only cause throttling.
+  observability_resources = {
+    for name, r in {
+      grafana            = { cpu = "50m", memory = "768Mi", limit = "1536Mi" }
+      grafana_sidecar    = { cpu = "10m", memory = "128Mi", limit = "256Mi" }
+      vmsingle           = { cpu = "100m", memory = "512Mi", limit = "2Gi" }
+      vlogs              = { cpu = "50m", memory = "256Mi", limit = "1Gi" }
+      collector          = { cpu = "20m", memory = "64Mi", limit = "256Mi" }
+      vmagent            = { cpu = "50m", memory = "128Mi", limit = "512Mi" }
+      vmalert            = { cpu = "50m", memory = "96Mi", limit = "512Mi" }
+      alertmanager       = { cpu = "20m", memory = "64Mi", limit = "256Mi" }
+      operator           = { cpu = "20m", memory = "96Mi", limit = "256Mi" }
+      kube_state_metrics = { cpu = "20m", memory = "96Mi", limit = "256Mi" }
+      node_exporter      = { cpu = "20m", memory = "64Mi", limit = "128Mi" }
+      } : name => {
+      requests = { cpu = r.cpu, memory = r.memory }
+      limits   = { memory = r.limit }
+    }
+  }
 }
 
 resource "helm_release" "victoria_logs" {
@@ -21,6 +43,7 @@ resource "helm_release" "victoria_logs" {
     yamlencode({
       server = {
         retentionPeriod = "7d"
+        resources       = local.observability_resources.vlogs
         persistentVolume = {
           enabled          = true
           size             = "100Gi"
@@ -55,6 +78,8 @@ resource "helm_release" "victoria_logs_collector" {
       remoteWrite = [{
         url = local.victoria_logs_url
       }]
+
+      resources = local.observability_resources.collector
     })
   ]
 
@@ -73,6 +98,7 @@ resource "helm_release" "victoria_metrics" {
     yamlencode({
       server = {
         retentionPeriod = "1" # months
+        resources       = local.observability_resources.vmsingle
         persistentVolume = {
           enabled          = true
           size             = "100Gi"
@@ -122,6 +148,7 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
           datasource  = { url = local.victoria_metrics_url }
           remoteRead  = { url = local.victoria_metrics_url }
           remoteWrite = { url = "${local.victoria_metrics_url}/api/v1/write" }
+          resources   = local.observability_resources.vmalert
         }
       }
 
@@ -132,6 +159,7 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
         name    = "alertmanager"
         spec = {
           configSecret = kubernetes_secret_v1.alertmanager_config.metadata[0].name
+          resources    = local.observability_resources.alertmanager
         }
       }
 
@@ -191,6 +219,7 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
           remoteWrite = [{
             url = "${local.victoria_metrics_url}/api/v1/write"
           }]
+          resources = local.observability_resources.vmagent
         }
       }
 
@@ -205,6 +234,15 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
         operator = {
           disable_prometheus_converter = true
         }
+        resources = local.observability_resources.operator
+      }
+
+      "kube-state-metrics" = {
+        resources = local.observability_resources.kube_state_metrics
+      }
+
+      "prometheus-node-exporter" = {
+        resources = local.observability_resources.node_exporter
       }
     })
   ]
@@ -329,7 +367,16 @@ resource "helm_release" "grafana" {
         "victoriametrics-logs-datasource",
       ]
 
+      resources = local.observability_resources.grafana
+
+      # The ReadWriteOnce PVC can only attach to one node, so stop the old pod
+      # before starting the new one instead of rolling.
+      deploymentStrategy = {
+        type = "Recreate"
+      }
+
       sidecar = {
+        resources = local.observability_resources.grafana_sidecar
         dashboards = {
           enabled         = true
           label           = "grafana_dashboard"
