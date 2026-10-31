@@ -374,3 +374,18 @@ resource "helm_release" "grafana" {
   ]
 }
 
+# Dashboards in dashboards/ are loaded by Grafana's sidecar, which watches for
+# ConfigMaps with the grafana_dashboard label.
+resource "kubernetes_config_map_v1" "grafana_dashboards" {
+  metadata {
+    name      = "homelab-dashboards"
+    namespace = kubernetes_namespace_v1.observability.metadata[0].name
+    labels = {
+      grafana_dashboard = "1"
+    }
+  }
+
+  data = {
+    for f in fileset("${path.module}/dashboards", "*.json") : f => file("${path.module}/dashboards/${f}")
+  }
+}

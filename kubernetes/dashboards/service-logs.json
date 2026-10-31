@@ -1,0 +1,259 @@
+{
+  "uid": "service-logs",
+  "title": "Service logs",
+  "description": "Container logs from VictoriaLogs, filtered by namespace and service (container name).",
+  "tags": [
+    "logs",
+    "victorialogs"
+  ],
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "victoriametrics-logs-datasource",
+        "hide": 2,
+        "current": {}
+      },
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-logs-datasource",
+          "uid": "${ds}"
+        },
+        "query": {
+          "type": "fieldValue",
+          "field": "kubernetes.pod_namespace",
+          "query": "*",
+          "limit": 500
+        },
+        "definition": "kubernetes.pod_namespace values",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-logs-datasource",
+          "uid": "${ds}"
+        },
+        "query": {
+          "type": "fieldValue",
+          "field": "kubernetes.container_name",
+          "query": "kubernetes.pod_namespace:in($namespace)",
+          "limit": 500
+        },
+        "definition": "kubernetes.container_name values",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "search",
+        "label": "Search (LogsQL)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Optional LogsQL filter, e.g. timeout, \"connection refused\" or level:error."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Log lines per service",
+      "description": "Log lines per minute for each selected service.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${ds}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:in($namespace) kubernetes.container_name:in($service) $search | stats by (kubernetes.pod_namespace, kubernetes.container_name) count() as lines",
+          "legendFormat": "{{kubernetes.pod_namespace}}/{{kubernetes.container_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ],
+          "sortBy": "Total",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Errors per service",
+      "description": "Lines with an error/fatal/critical level, logfmt level=error, or a klog E/F prefix.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${ds}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:in($namespace) kubernetes.container_name:in($service) $search (level:~\"(?i)^(err|error|fatal|panic|crit|critical)$\" OR _msg:~\"(?i)level=\\\"?(error|err|fatal|crit)\" OR _msg:~\"^[EF][0-9]{4} \") | stats by (kubernetes.pod_namespace, kubernetes.container_name) count() as lines",
+          "legendFormat": "{{kubernetes.pod_namespace}}/{{kubernetes.container_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            },
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ],
+          "sortBy": "Total",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Logs",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${ds}"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "instant",
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:in($namespace) kubernetes.container_name:in($service) $search",
+          "maxLines": 1000
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showCommonLabels": false
+      }
+    }
+  ]
+}

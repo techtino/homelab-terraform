@@ -349,6 +349,16 @@ kubectl port-forward -n observability svc/vmalertmanager-alertmanager 9093
 curl -s localhost:9093/api/v2/alerts | jq -r '.[].labels.alertname'
 ```
 
+## Logs Dashboard
+
+The Grafana dashboard "Service logs" shows container logs from VictoriaLogs.
+Pick namespaces and services (container names), and optionally add a LogsQL
+filter in Search, such as `timeout` or `"connection refused"`. It shows log lines
+and errors per service over time, and the matching log lines.
+
+Dashboards are JSON files in `kubernetes/dashboards/`; each one is loaded into
+Grafana through the `homelab-dashboards` ConfigMap.
+
 ## Check The Cluster
 
 ```bash
