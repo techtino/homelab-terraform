@@ -315,13 +315,22 @@ Pushover:
 - `critical` alerts are sent with high priority.
 - `warning` alerts are sent with normal priority, unless the same alert is
   already critical.
-- `info` alerts, `Watchdog` and `InfoInhibitor` are not sent.
+- `info` alerts and `InfoInhibitor` are not sent.
 
 `kubernetes/traefik-monitoring.tf` collects Traefik's metrics and adds two
 alerts: `TraefikRouteErrorRateHigh` (over 10% of a route's requests returning
 5xx for 10 minutes) and `TraefikCertificateNotRenewed` (a served certificate has
 under 4 hours left, critical under 1 hour; step-ca certificates last 24 hours
 and renew with 8 hours left).
+
+### Dead man's switch
+
+`Watchdog` always fires. Alertmanager sends it to a healthchecks.io check every
+minute, so healthchecks.io alerts you if the pings stop because vmalert,
+Alertmanager or the cluster is down. Create a check at https://healthchecks.io
+with a 5 minute period and 5 minute grace time, add your Pushover integration to
+it, and set its ping URL as `TF_VAR_healthchecks_ping_url` in `.env`. If it is
+empty, `Watchdog` is dropped.
 
 Create a Pushover application at https://pushover.net/apps/build for the API
 token. Set `TF_VAR_pushover_user_key` and `TF_VAR_pushover_api_token` in `.env`.

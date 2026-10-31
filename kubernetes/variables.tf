@@ -45,3 +45,10 @@ variable "pushover_api_token" {
   type        = string
   sensitive   = true
 }
+
+variable "healthchecks_ping_url" {
+  description = "healthchecks.io ping URL for the Alertmanager dead man's switch. Empty disables it."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

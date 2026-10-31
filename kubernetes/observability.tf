@@ -233,9 +233,18 @@ resource "kubernetes_secret_v1" "alertmanager_config" {
         repeat_interval = "12h"
         routes = [
           {
-            # Watchdog always fires to prove the pipeline works, and
+            # Watchdog always fires. Pinging the dead man's switch with it
+            # every minute means healthchecks.io alerts if the pings stop,
+            # i.e. if vmalert, Alertmanager or the cluster is down.
+            matchers        = ["alertname=\"Watchdog\""]
+            receiver        = var.healthchecks_ping_url != "" ? "deadmans-switch" : "blackhole"
+            group_wait      = "0s"
+            group_interval  = "1m"
+            repeat_interval = "1m"
+          },
+          {
             # InfoInhibitor only exists to mute info alerts.
-            matchers = ["alertname=~\"Watchdog|InfoInhibitor\""]
+            matchers = ["alertname=\"InfoInhibitor\""]
             receiver = "blackhole"
           },
           {
@@ -256,7 +265,7 @@ resource "kubernetes_secret_v1" "alertmanager_config" {
         equal           = ["alertname", "namespace", "cn", "route"]
       }]
 
-      receivers = [
+      receivers = concat([
         { name = "blackhole" },
         {
           name = "pushover"
@@ -276,7 +285,13 @@ resource "kubernetes_secret_v1" "alertmanager_config" {
             send_resolved = true
           }]
         },
-      ]
+        ], var.healthchecks_ping_url != "" ? [{
+          name = "deadmans-switch"
+          webhook_configs = [{
+            url           = var.healthchecks_ping_url
+            send_resolved = false
+          }]
+      }] : [])
     })
   }
 }
@@ -358,3 +373,4 @@ resource "helm_release" "grafana" {
     helm_release.victoria_metrics,
   ]
 }
+
