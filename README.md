@@ -317,6 +317,12 @@ Pushover:
   already critical.
 - `info` alerts, `Watchdog` and `InfoInhibitor` are not sent.
 
+`kubernetes/traefik-monitoring.tf` collects Traefik's metrics and adds two
+alerts: `TraefikRouteErrorRateHigh` (over 10% of a route's requests returning
+5xx for 10 minutes) and `TraefikCertificateNotRenewed` (a served certificate has
+under 4 hours left, critical under 1 hour; step-ca certificates last 24 hours
+and renew with 8 hours left).
+
 Create a Pushover application at https://pushover.net/apps/build for the API
 token. Set `TF_VAR_pushover_user_key` and `TF_VAR_pushover_api_token` in `.env`.
 
