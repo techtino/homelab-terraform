@@ -33,3 +33,15 @@ variable "basic_auth_htpasswd" {
   type        = string
   sensitive   = true
 }
+
+variable "pushover_user_key" {
+  description = "Pushover user or group key that receives Alertmanager notifications."
+  type        = string
+  sensitive   = true
+}
+
+variable "pushover_api_token" {
+  description = "Pushover application API token used by Alertmanager."
+  type        = string
+  sensitive   = true
+}

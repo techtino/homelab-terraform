@@ -12,6 +12,7 @@ The cluster uses:
 - cert-manager with an in-cluster step-ca for internal TLS
 - Headlamp for web management
 - VictoriaMetrics, VictoriaLogs and Grafana for observability
+- vmalert and Alertmanager for alerts sent to Pushover
 
 ## Before You Start
 
@@ -37,8 +38,8 @@ cp .env.example .env
 source .env
 ```
 
-Set the real values for the SSH password hash, Proxmox API token, and TrueNAS
-API key. Keep `.env` private and never commit it.
+Set the real values for the SSH password hash, Proxmox API token, TrueNAS
+API key, and Pushover user key and application token. Keep `.env` private and never commit it.
 
 Create a password hash with:
 
@@ -164,6 +165,7 @@ This installs and manages:
 - Metrics Server with CA-verified kubelet connections
 - Headlamp
 - VictoriaMetrics, VictoriaLogs and Grafana
+- vmalert and Alertmanager, sending alerts to Pushover
 - The apps in `kubernetes/apps.tf` (`whoami`, `test`)
 
 ## Storage
@@ -302,6 +304,34 @@ with:
 
 ```bash
 kubectl create token headlamp -n headlamp
+```
+
+## Alerts
+
+vmalert evaluates the default alert rules from `victoria-metrics-k8s-stack`
+against VictoriaMetrics. Alertmanager sends firing and resolved alerts to
+Pushover:
+
+- `critical` alerts are sent with high priority.
+- `warning` alerts are sent with normal priority, unless the same alert is
+  already critical.
+- `info` alerts, `Watchdog` and `InfoInhibitor` are not sent.
+
+Create a Pushover application at https://pushover.net/apps/build for the API
+token. Set `TF_VAR_pushover_user_key` and `TF_VAR_pushover_api_token` in `.env`.
+
+Send a test alert to Pushover. It resolves on its own a few minutes later:
+
+```bash
+scripts/test-alert.sh            # normal priority
+scripts/test-alert.sh critical   # high priority
+```
+
+List the alerts that are currently firing:
+
+```bash
+kubectl port-forward -n observability svc/vmalertmanager-alertmanager 9093
+curl -s localhost:9093/api/v2/alerts | jq -r '.[].labels.alertname'
 ```
 
 ## Check The Cluster

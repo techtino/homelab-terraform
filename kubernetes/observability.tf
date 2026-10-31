@@ -113,14 +113,26 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
         enabled = false
       }
 
+      # Evaluates the chart's default alert rules against VictoriaMetrics Single.
+      # Alert state is written back so it survives vmalert restarts.
       vmalert = {
-        enabled = false
+        enabled = true
+        name    = "vmalert"
+        spec = {
+          datasource  = { url = local.victoria_metrics_url }
+          remoteRead  = { url = local.victoria_metrics_url }
+          remoteWrite = { url = "${local.victoria_metrics_url}/api/v1/write" }
+        }
       }
 
-      # Nothing sends alerts without vmalert, and its generated StatefulSet name
-      # pushes the pod's controller-revision-hash label past 63 characters.
+      # A short name keeps the operator's StatefulSet name, and with it the
+      # pod's controller-revision-hash label, under 63 characters.
       alertmanager = {
-        enabled = false
+        enabled = true
+        name    = "alertmanager"
+        spec = {
+          configSecret = kubernetes_secret_v1.alertmanager_config.metadata[0].name
+        }
       }
 
       kubeEtcd = {
@@ -201,6 +213,72 @@ resource "helm_release" "victoria_metrics_k8s_stack" {
     helm_release.victoria_metrics,
     helm_release.grafana,
   ]
+}
+
+# Alertmanager config, kept out of the Helm values so the Pushover credentials
+# aren't stored in the Helm release.
+resource "kubernetes_secret_v1" "alertmanager_config" {
+  metadata {
+    name      = "alertmanager-config"
+    namespace = kubernetes_namespace_v1.observability.metadata[0].name
+  }
+
+  data = {
+    "alertmanager.yaml" = yamlencode({
+      route = {
+        receiver        = "pushover"
+        group_by        = ["alertname", "namespace"]
+        group_wait      = "30s"
+        group_interval  = "5m"
+        repeat_interval = "12h"
+        routes = [
+          {
+            # Watchdog always fires to prove the pipeline works, and
+            # InfoInhibitor only exists to mute info alerts.
+            matchers = ["alertname=~\"Watchdog|InfoInhibitor\""]
+            receiver = "blackhole"
+          },
+          {
+            matchers = ["severity=\"info\""]
+            receiver = "blackhole"
+          },
+          {
+            matchers = ["severity=\"critical\""]
+            receiver = "pushover-critical"
+          },
+        ]
+      }
+
+      inhibit_rules = [{
+        # Don't send a warning when the same problem is already critical.
+        source_matchers = ["severity=\"critical\""]
+        target_matchers = ["severity=\"warning\""]
+        equal           = ["alertname", "namespace"]
+      }]
+
+      receivers = [
+        { name = "blackhole" },
+        {
+          name = "pushover"
+          pushover_configs = [{
+            user_key      = var.pushover_user_key
+            token         = var.pushover_api_token
+            priority      = "0"
+            send_resolved = true
+          }]
+        },
+        {
+          name = "pushover-critical"
+          pushover_configs = [{
+            user_key      = var.pushover_user_key
+            token         = var.pushover_api_token
+            priority      = "{{ if eq .Status \"firing\" }}1{{ else }}0{{ end }}"
+            send_resolved = true
+          }]
+        },
+      ]
+    })
+  }
 }
 
 resource "helm_release" "grafana" {
