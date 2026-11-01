@@ -13,18 +13,6 @@ locals {
       auth     = true
       env      = { TZ = "Europe/London" }
     }
-    test = {
-      image            = "ghcr.io/kljensen/hello-world-http:latest"
-      port             = 8000
-      auth             = true
-      data_size        = "1Gi"
-      data_mount_paths = ["/app-data"]
-      env = {
-        TZ   = "Europe/London"
-        HOST = "0.0.0.0"
-        PORT = "8000"
-      }
-    }
   }
 }
 

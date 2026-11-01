@@ -44,9 +44,6 @@ flowchart TB
 
     subgraph AppNS["homelab-apps namespace · app module"]
       Who["whoami Service → 2 Pods<br/>stateless, one per worker"]
-      Test["test Service :8000 → Pod"]
-      TestPVC[("test PVC")]
-      Test --- TestPVC
     end
 
     External["proxmox · router · truenas<br/>selector-less Services in traefik namespace"]
@@ -75,7 +72,6 @@ flowchart TB
     PodLogs --> VLA
 
     Routes -->|"whoami.home.arpa"| Who
-    Routes -->|"test.home.arpa"| Test
     Routes -->|"headlamp.home.arpa"| Head
     Routes -->|"grafana.home.arpa"| Grafana
     Routes -->|"proxmox / router / truenas.home.arpa"| External
@@ -85,8 +81,7 @@ flowchart TB
   W1 --- NAS
   W2 --- NAS
   CP --- NAS
-  NAS -. "CSI NVMe-oF PVC volumes" .-> TestPVC
-  NAS -.-> VM
+  NAS -. "CSI NVMe-oF PVC volumes" .-> VM
   NAS -.-> VL
 
   Trust["Install step-ca root certificate<br/>in client trust store"]

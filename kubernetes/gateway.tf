@@ -10,10 +10,7 @@ resource "helm_release" "traefik" {
   namespace  = kubernetes_namespace_v1.traefik.metadata[0].name
   repository = "https://traefik.github.io/charts"
   chart      = "traefik"
-
-  # Pin a chart version after checking the version
-  # currently installed in your cluster.
-  version = "41.7.1"
+  version    = "41.7.1"
 
   values = [
     yamlencode({

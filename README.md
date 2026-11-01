@@ -166,7 +166,7 @@ This installs and manages:
 - Headlamp
 - VictoriaMetrics, VictoriaLogs and Grafana
 - vmalert and Alertmanager, sending alerts to Pushover
-- The apps in `kubernetes/apps.tf` (`whoami`, `test`)
+- The apps in `kubernetes/apps.tf` (`whoami`)
 
 ## Storage
 
@@ -239,7 +239,7 @@ kubectl get pvc -A
 kubectl get pv
 ```
 
-PVCs use `Retain`, so deleting a claim may leave data behind in TrueNAS. Treat PVC and PV deletion as data-destructive operations and check the corresponding TrueNAS volume first.
+PVCs use `Delete`: deleting a claim deletes its volume and data on TrueNAS. Take a VolumeSnapshot first if the data matters.
 
 ## Adding An App
 
@@ -255,7 +255,7 @@ from the name:
   The Service must be called `name`.
 
 Set `auth = true` on an entry to put it behind basic auth (Traefik's basicAuth
-middleware, `kubernetes/auth.tf`). It is on for whoami, test and headlamp, and
+middleware, `kubernetes/auth.tf`). It is on for whoami and headlamp, and
 off for apps that have their own login. Set or change the credentials with
 `scripts/set-basic-auth.sh [username]`, which writes
 `TF_VAR_basic_auth_htpasswd` to `.env`, then re-apply.

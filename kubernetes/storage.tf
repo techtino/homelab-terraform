@@ -76,7 +76,7 @@ resource "kubernetes_storage_class_v1" "truenas_nvmeof" {
   }
 
   storage_provisioner    = "csi.truenas.io"
-  reclaim_policy         = "Retain"
+  reclaim_policy         = "Delete"
   volume_binding_mode    = "Immediate"
   allow_volume_expansion = true
 

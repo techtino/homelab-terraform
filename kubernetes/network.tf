@@ -20,7 +20,7 @@ resource "helm_release" "cilium" {
       # server coordinates reachable directly while Cilium starts up.
       kubeProxyReplacement = true
       k8sServiceHost       = data.terraform_remote_state.proxmox.outputs.kubernetes_control_plane_ipv4
-      k8sServicePort       = var.cilium_k8s_api_port
+      k8sServicePort       = 6443
     })
   ]
 }

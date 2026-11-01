@@ -152,7 +152,6 @@ resource "helm_release" "headlamp" {
   ]
 
   depends_on = [
-    helm_release.traefik,
     helm_release.metrics_server,
     kubectl_manifest.gateway_api_crds,
     kubectl_manifest.headlamp_gateway_readonly,

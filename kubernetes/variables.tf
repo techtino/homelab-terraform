@@ -16,12 +16,6 @@ variable "opnsense_api_secret" {
   sensitive   = true
 }
 
-variable "cilium_k8s_api_port" {
-  description = "Port of the Kubernetes control-plane API server, used by Cilium without kube-proxy."
-  type        = number
-  default     = 6443
-}
-
 variable "truenas_api_key" {
   description = "TrueNAS API key for the CSI driver"
   type        = string
