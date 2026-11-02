@@ -293,7 +293,7 @@ resource "kubernetes_secret_v1" "alertmanager_config" {
         # Don't send a warning when the same problem is already critical.
         source_matchers = ["severity=\"critical\""]
         target_matchers = ["severity=\"warning\""]
-        equal           = ["alertname", "namespace", "cn", "route"]
+        equal           = ["alertname", "namespace", "name", "route"]
       }]
 
       receivers = concat([

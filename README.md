@@ -339,11 +339,14 @@ Pushover:
   already critical.
 - `info` alerts and `InfoInhibitor` are not sent.
 
-`kubernetes/traefik-monitoring.tf` collects Traefik's metrics and adds two
-alerts: `TraefikRouteErrorRateHigh` (over 10% of a route's requests returning
-5xx for 10 minutes) and `TraefikCertificateNotRenewed` (a served certificate has
-under 4 hours left, critical under 1 hour; step-ca certificates last 24 hours
-and renew with 8 hours left).
+`kubernetes/traefik-monitoring.tf` collects Traefik's metrics and adds
+`TraefikRouteErrorRateHigh` (over 10% of a route's requests returning 5xx for 10
+minutes).
+
+`kubernetes/cert-manager-monitoring.tf` collects cert-manager's metrics and adds
+`CertificateNotRenewed` (a certificate has under 4 hours left, critical under 1
+hour; step-ca certificates last 24 hours and renew with 8 hours left) and
+`CertificateNotReady` (a certificate hasn't been issued for 15 minutes).
 
 ### Dead man's switch
 

@@ -1,6 +1,8 @@
 # Collect Traefik's Prometheus metrics (port "metrics", 9100) and alert on
-# failing routes and certificates that aren't being renewed. vmagent picks up
-# scrape and rule objects from every namespace.
+# failing routes. Certificate alerts use cert-manager's metrics instead
+# (cert-manager-monitoring.tf): Traefik keeps reporting every certificate it
+# has ever loaded until it restarts. vmagent picks up scrape and rule objects
+# from every namespace.
 resource "kubectl_manifest" "traefik_pod_scrape" {
   yaml_body = yamlencode({
     apiVersion = "operator.victoriametrics.com/v1beta1"
@@ -60,31 +62,6 @@ resource "kubectl_manifest" "traefik_rules" {
             annotations = {
               summary     = "{{ $labels.route }} is returning 5xx errors."
               description = "{{ $value | humanizePercentage }} of requests to {{ $labels.route }} through Traefik returned a 5xx status over the last 5 minutes."
-            }
-          },
-          {
-            # step-ca certificates last 24h and cert-manager renews them 8h
-            # before expiry, so under 4h left means renewal has failed.
-            alert = "TraefikCertificateNotRenewed"
-            expr  = "(max by (cn) (traefik_tls_certs_not_after) - time()) < 4 * 3600"
-            for   = "10m"
-            labels = {
-              severity = "warning"
-            }
-            annotations = {
-              summary     = "Certificate for {{ $labels.cn }} expires soon and hasn't been renewed."
-              description = "The certificate Traefik serves for {{ $labels.cn }} expires in {{ $value | humanizeDuration }}. Check the cert-manager Certificate and step-ca."
-            }
-          },
-          {
-            alert = "TraefikCertificateNotRenewed"
-            expr  = "(max by (cn) (traefik_tls_certs_not_after) - time()) < 3600"
-            labels = {
-              severity = "critical"
-            }
-            annotations = {
-              summary     = "Certificate for {{ $labels.cn }} expires within an hour."
-              description = "The certificate Traefik serves for {{ $labels.cn }} expires in {{ $value | humanizeDuration }}. Check the cert-manager Certificate and step-ca."
             }
           },
         ]
