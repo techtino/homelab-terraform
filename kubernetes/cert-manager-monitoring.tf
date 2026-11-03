@@ -40,30 +40,35 @@ resource "kubectl_manifest" "cert_manager_rules" {
         rules = [
           {
             # step-ca certificates last 24h and cert-manager renews them 8h
-            # before expiry, so under 4h left means renewal has failed.
+            # before expiry, so under 4h left means renewal has failed. The
+            # expiry is 0 until a Certificate's first issue, which would read
+            # as long expired; CertificateNotReady covers that case instead.
             alert = "CertificateNotRenewed"
-            expr  = "certmanager_certificate_expiration_timestamp_seconds - time() < 4 * 3600"
+            expr  = "(certmanager_certificate_expiration_timestamp_seconds > 0) - time() < 4 * 3600"
             for   = "10m"
             labels = {
               severity = "warning"
             }
             annotations = {
-              summary     = "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires soon and hasn't been renewed."
+              summary     = "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires soon and hasn't been renewed."
               description = "The certificate expires in {{ $value | humanizeDuration }}. Check the Certificate's status and step-ca."
             }
           },
           {
             alert = "CertificateNotRenewed"
-            expr  = "certmanager_certificate_expiration_timestamp_seconds - time() < 3600"
+            expr  = "(certmanager_certificate_expiration_timestamp_seconds > 0) - time() < 3600"
             labels = {
               severity = "critical"
             }
             annotations = {
-              summary     = "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires within an hour."
+              summary     = "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires within an hour."
               description = "The certificate expires in {{ $value | humanizeDuration }}. Check the Certificate's status and step-ca."
             }
           },
           {
+            # `namespace` is cert-manager's own (the scrape target); the
+            # Certificate's namespace is in `exported_namespace`.
+            #
             # Catches issuing failures (e.g. a new app's first certificate)
             # long before anything is close to expiring.
             alert = "CertificateNotReady"
@@ -73,8 +78,8 @@ resource "kubectl_manifest" "cert_manager_rules" {
               severity = "warning"
             }
             annotations = {
-              summary     = "Certificate {{ $labels.namespace }}/{{ $labels.name }} isn't ready."
-              description = "cert-manager hasn't been able to issue this certificate for 15 minutes. Check `kubectl describe certificate -n {{ $labels.namespace }} {{ $labels.name }}` and step-ca."
+              summary     = "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} isn't ready."
+              description = "cert-manager hasn't been able to issue this certificate for 15 minutes. Check `kubectl describe certificate -n {{ $labels.exported_namespace }} {{ $labels.name }}` and step-ca."
             }
           },
         ]
