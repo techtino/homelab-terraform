@@ -21,6 +21,13 @@ resource "helm_release" "cilium" {
       kubeProxyReplacement = true
       k8sServiceHost       = data.terraform_remote_state.proxmox.outputs.kubernetes_control_plane_ipv4
       k8sServicePort       = 6443
+
+      # Hubble itself is on by default; Relay aggregates flows from every node
+      # and the UI is exposed through the gateway (routes.tf).
+      hubble = {
+        relay = { enabled = true }
+        ui    = { enabled = true }
+      }
     })
   ]
 }

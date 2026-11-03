@@ -24,8 +24,9 @@ locals {
       }
     },
     {
-      headlamp = { namespace = kubernetes_namespace_v1.headlamp.metadata[0].name, port = 80, auth = false } # asks for a Kubernetes token
-      grafana  = { namespace = kubernetes_namespace_v1.observability.metadata[0].name, port = 80, auth = false }
+      headlamp  = { namespace = kubernetes_namespace_v1.headlamp.metadata[0].name, port = 80, auth = false } # asks for a Kubernetes token
+      grafana   = { namespace = kubernetes_namespace_v1.observability.metadata[0].name, port = 80, auth = false }
+      hubble-ui = { namespace = "kube-system", port = 80, auth = true } # no login of its own
     },
   )
 }
