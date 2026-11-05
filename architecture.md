@@ -42,11 +42,16 @@ flowchart TB
       Certs -. "Gateway listener certificateRefs" .-> GW
     end
 
-    subgraph AppNS["homelab-apps namespace · app module"]
+    subgraph AppNS["homelab-apps namespace · homelab chart"]
       Who["whoami Service → 2 Pods<br/>stateless, one per worker"]
     end
 
     External["proxmox · router · truenas<br/>selector-less Services in traefik namespace"]
+
+    subgraph ArgoNS["argocd namespace"]
+      Argo["Argo CD<br/>syncs gitops/ from GitHub"]
+    end
+    Argo -. "deploys everything except Cilium,<br/>DNS records and Secrets" .-> AppNS
 
     subgraph HeadlampNS["headlamp namespace"]
       Head["Headlamp Service → Pod"]
@@ -74,6 +79,7 @@ flowchart TB
     Routes -->|"whoami.home.arpa"| Who
     Routes -->|"headlamp.home.arpa"| Head
     Routes -->|"grafana.home.arpa"| Grafana
+    Routes -->|"argocd.home.arpa"| Argo
     Routes -->|"proxmox / router / truenas.home.arpa"| External
   end
 
@@ -96,4 +102,5 @@ flowchart TB
 - proxmox, router and truenas are routed the same way, to their LAN IPs through selector-less Services.
 - cert-manager requests an individual certificate through the StepClusterIssuer and step-ca. The resulting Secrets are referenced by the Traefik Gateway listener.
 - vmagent scrapes cluster metrics and writes them to VictoriaMetrics; vlagent collects Kubernetes logs and writes them to VictoriaLogs. Grafana queries both stores and loads dashboards from ConfigMaps.
+- OpenTofu installs Cilium, Argo CD, the OPNsense DNS records and all Secrets. Argo CD deploys everything else from `gitops/` on the `main` branch: Gateway API, Traefik, the Gateway and routes, cert-manager, step-ca, MetalLB, storage, Metrics Server, Headlamp, the observability stack and the homelab apps.
 - Proxmox runs one control-plane VM and two worker VMs. Cilium provides cluster networking and replaces kube-proxy. TrueNAS supplies persistent volumes through its NVMe-oF CSI driver.

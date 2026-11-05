@@ -1,0 +1,33 @@
+{{- range $name, $svc := .Values.external }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: traefik
+spec:
+  # Port name "https" makes Traefik use TLS to the backend.
+  ports:
+    - name: https
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ $name }}
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: {{ $name }}
+addressType: IPv4
+endpoints:
+  - addresses:
+      - {{ $svc.ip }}
+    # Traefik skips endpoints that aren't explicitly ready.
+    conditions:
+      ready: true
+ports:
+  - name: https
+    port: {{ $svc.port }}
+    appProtocol: https
+{{- end }}

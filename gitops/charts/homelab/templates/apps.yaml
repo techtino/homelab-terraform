@@ -1,0 +1,112 @@
+{{- range $name, $app := .Values.apps }}
+{{- $port := $app.port | default 80 }}
+{{- $replicas := $app.replicas | default 1 | int }}
+{{- $persistent := not (empty $app.dataSize) }}
+{{- if and $persistent (gt $replicas 1) }}
+{{- fail (printf "%s: apps with persistent data (dataSize) can only run one replica" $name) }}
+{{- end }}
+{{- if $persistent }}
+---
+# Persistent application data. Kept if the app is removed from values.yaml, as
+# deleting it would delete the volume on TrueNAS; delete the PVC by hand.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: truenas-nvmeof
+  resources:
+    requests:
+      storage: {{ $app.dataSize }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+spec:
+  replicas: {{ $replicas }}
+  # A ReadWriteOnce volume can only be mounted by one pod at a time.
+  strategy:
+    type: {{ ternary "Recreate" "RollingUpdate" $persistent }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      # Prefer one replica per node, but still schedule if a node is down.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ $name }}
+      containers:
+        - name: {{ $name }}
+          image: {{ $app.image }}
+          {{- with $app.env }}
+          env:
+            {{- range $key, $value := . }}
+            - name: {{ $key }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+              protocol: TCP
+          # Only send traffic to pods that are accepting connections.
+          readinessProbe:
+            tcpSocket:
+              port: {{ $port }}
+            periodSeconds: 2
+          {{- if $persistent }}
+          volumeMounts:
+            {{- range ($app.dataMountPaths | default (list "/config")) }}
+            - name: app-data
+              mountPath: {{ . }}
+            {{- end }}
+          {{- end }}
+      {{- if $persistent }}
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+      {{- end }}
+{{- if gt $replicas 1 }}
+---
+# Keep at least one replica running through node drains.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: {{ $port }}
+      protocol: TCP
+{{- end }}

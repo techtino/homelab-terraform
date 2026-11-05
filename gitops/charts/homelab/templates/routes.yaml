@@ -1,0 +1,100 @@
+{{- $routes := include "homelab.routes" . | fromYaml }}
+{{- $authNamespaces := dict }}
+{{- range $name, $route := $routes }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  namespace: {{ $route.namespace }}
+spec:
+  parentRefs:
+    - name: traefik-gateway
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - {{ $name }}.{{ $.Values.domain }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $route.service }}
+          port: {{ $route.port }}
+      {{- if $route.auth }}
+      {{- $_ := set $authNamespaces $route.namespace true }}
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: basic-auth
+      {{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}
+  namespace: traefik
+spec:
+  secretName: {{ $name }}-tls
+  dnsNames:
+    - {{ $name }}.{{ $.Values.domain }}
+  duration: 24h
+  renewBefore: 8h
+  issuerRef:
+    name: step-issuer
+    kind: StepClusterIssuer
+    group: certmanager.step.sm
+{{- end }}
+{{- /*
+An HTTPRoute can only use a Middleware in its own namespace, so each namespace
+with a protected route gets its own copy.
+*/}}
+{{- range $namespace, $_ := $authNamespaces }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basic-auth
+  namespace: {{ $namespace }}
+spec:
+  basicAuth:
+    secret: basic-auth
+    # Don't pass the Authorization header on to the app; send the logged-in
+    # username instead. Traefik strips any client-supplied X-Remote-User at
+    # the entrypoint first.
+    removeHeader: true
+    headerField: X-Remote-User
+{{- end }}
+---
+# HTTP redirects to HTTPS; the HTTPS listener serves every routed name's
+# certificate.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: traefik-gateway
+  namespace: traefik
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: web
+      port: 8000
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: websecure
+      port: 8443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          {{- range $name, $_ := $routes }}
+          - kind: Secret
+            name: {{ $name }}-tls
+          {{- end }}

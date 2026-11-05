@@ -17,9 +17,9 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.19"
     }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.4"
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }
@@ -50,21 +50,4 @@ data "terraform_remote_state" "proxmox" {
   config = {
     path = "${path.module}/../proxmox/terraform.tfstate"
   }
-}
-
-data "http" "gateway_api_crds" {
-  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml"
-}
-
-locals {
-  gateway_api_crd_documents = {
-    for index, document in split("---", data.http.gateway_api_crds.response_body) :
-    tostring(index) => trimspace(document)
-    if can(regex("(?m)^apiVersion:", trimspace(document)))
-  }
-}
-
-resource "kubectl_manifest" "gateway_api_crds" {
-  for_each  = local.gateway_api_crd_documents
-  yaml_body = each.value
 }

@@ -1,4 +1,7 @@
 
+# Installed here rather than by Argo CD: nothing, Argo CD included, can run
+# until the cluster has a network. MetalLB is deployed by Argo CD
+# (gitops/apps/metallb.yaml).
 resource "helm_release" "cilium" {
   name            = "cilium"
   namespace       = "kube-system"
@@ -30,27 +33,4 @@ resource "helm_release" "cilium" {
       }
     })
   ]
-}
-
-resource "helm_release" "metallb" {
-  name             = "metallb"
-  namespace        = "metallb-system"
-  create_namespace = true
-  repository       = "https://metallb.github.io/metallb"
-  chart            = "metallb"
-  version          = "0.16.1"
-  wait             = true
-  atomic           = true
-  timeout          = 600
-  depends_on       = [helm_release.cilium]
-}
-
-resource "helm_release" "metallb_config" {
-  name       = "metallb-config"
-  namespace  = "metallb-system"
-  chart      = "${path.module}/charts/metallb-config"
-  wait       = true
-  atomic     = true
-  timeout    = 600
-  depends_on = [helm_release.metallb]
 }

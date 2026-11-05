@@ -1,0 +1,5 @@
+apiVersion: v2
+name: homelab
+description: Homelab apps and everything served through the Traefik Gateway
+type: application
+version: 0.1.0

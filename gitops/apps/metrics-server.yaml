@@ -1,0 +1,45 @@
+# Metrics Server with CA-verified kubelet connections. It trusts the kubeadm
+# cluster CA and uses node IPs, so cluster DNS doesn't need node records.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: https://kubernetes-sigs.github.io/metrics-server/
+    chart: metrics-server
+    targetRevision: 3.14.0
+    helm:
+      releaseName: metrics-server
+      valuesObject:
+        defaultArgs:
+          - --cert-dir=/tmp
+          - --kubelet-certificate-authority=/etc/metrics-server/kubelet-ca/ca.crt
+          - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+          - --kubelet-use-node-status-port
+          - --metric-resolution=15s
+        extraVolumes:
+          - name: kubelet-ca
+            configMap:
+              name: kube-root-ca.crt
+        extraVolumeMounts:
+          - name: kubelet-ca
+            mountPath: /etc/metrics-server/kubelet-ca
+            readOnly: true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

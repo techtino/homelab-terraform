@@ -1,0 +1,30 @@
+# VolumeSnapshot CRDs and the controller that handles them. The TrueNAS CSI
+# driver's csi-snapshotter sidecar needs both for PVC snapshots.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: snapshot-controller
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: https://piraeus.io/helm-charts/
+    chart: snapshot-controller
+    targetRevision: 5.4.0
+    helm:
+      releaseName: snapshot-controller
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

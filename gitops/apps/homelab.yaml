@@ -1,0 +1,34 @@
+# gitops/charts/homelab: the simple container apps, plus the Gateway, routes,
+# certificates and external services for everything in its values.yaml.
+# OpenTofu reads the same file to create DNS records and basic auth Secrets.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: homelab-apps
+  source:
+    repoURL: https://github.com/techtino/homelab-terraform.git
+    targetRevision: main
+    path: gitops/charts/homelab
+    helm:
+      releaseName: homelab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      # Gateway API, cert-manager and Traefik CRDs come from other
+      # Applications and may not exist on the first sync.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

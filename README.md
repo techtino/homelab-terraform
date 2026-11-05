@@ -11,6 +11,7 @@ The cluster uses:
 - TrueNAS NVMe-oF storage through the TrueNAS CSI driver
 - cert-manager with an in-cluster step-ca for internal TLS
 - Headlamp for web management
+- Argo CD deploying the workloads in `gitops/` from Git
 - VictoriaMetrics, VictoriaLogs and Grafana for observability
 - vmalert and Alertmanager for alerts sent to Pushover
 
@@ -155,18 +156,71 @@ tofu plan
 tofu apply
 ```
 
-This installs and manages:
+OpenTofu installs and manages only what Argo CD can't:
 
-- Cilium
-- MetalLB
-- Traefik, the Gateway, HTTPRoutes and OPNsense DNS overrides
+- Cilium, which must be running before anything else can start
+- Argo CD
+- OPNsense DNS overrides, which aren't Kubernetes resources
+- Every Secret (TrueNAS API key, Alertmanager config, Grafana admin login,
+  basic auth), so no credentials are stored in Git
+
+Argo CD then deploys everything under `gitops/` from the `main` branch on
+GitHub:
+
+- Gateway API CRDs, Traefik, and the Gateway, HTTPRoutes and certificates
 - cert-manager, step-ca and step-issuer
-- TrueNAS CSI and the `truenas-nvmeof` StorageClass
+- MetalLB and its address pool
+- TrueNAS CSI, the snapshot controller and the `truenas-nvmeof` StorageClass
 - Metrics Server with CA-verified kubelet connections
 - Headlamp
-- VictoriaMetrics, VictoriaLogs and Grafana
-- vmalert and Alertmanager, sending alerts to Pushover
-- The apps in `kubernetes/apps.tf` (`whoami`)
+- VictoriaMetrics, VictoriaLogs, Grafana, vmalert and Alertmanager (sending
+  alerts to Pushover), plus the homelab dashboards and alert rules
+- The apps in `gitops/charts/homelab/values.yaml` (`whoami`)
+
+The apply finishes once Argo CD is installed. Argo CD then brings the rest up
+over a few minutes, retrying components whose dependencies (CRDs, the
+StorageClass, the CA) aren't ready yet.
+
+## Argo CD
+
+OpenTofu creates a `root` Application that syncs `gitops/apps/`, which holds
+one Application per component. Argo CD reads the pushed `main` branch, not your
+working copy: commit and push changes under `gitops/` and Argo CD applies them
+within about three minutes. It also reverts manual changes and deletes
+resources that are removed from Git.
+
+```text
+gitops/apps/          One Argo CD Application per component
+gitops/manifests/     Plain manifests and kustomizations those Applications use
+gitops/charts/homelab The apps, Gateway, routes, certificates and external services
+```
+
+Argo CD is at `https://argocd.home.arpa`. Log in as `admin` with:
+
+```bash
+kubectl get secret argocd-initial-admin-secret -n argocd \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+Check what it is doing:
+
+```bash
+kubectl get applications -n argocd
+```
+
+step-ca's chart runs in `existingSecrets` mode, so Argo CD never renders (or
+overwrites) the CA's keys and config. Two hook Jobs in
+`gitops/manifests/step-ca/hooks.yaml` handle them instead: before each sync,
+`step-ca-init` creates the CA if it doesn't exist yet (it never replaces one);
+after each sync, `step-issuer-config` points the StepClusterIssuer at the CA's
+current root certificate and provisioner key.
+
+The Gateway API CRDs Application never prunes: deleting a CRD would delete
+every Gateway and HTTPRoute.
+
+Deleting a file from `gitops/apps/` stops Argo CD managing that component but
+leaves its resources running; delete them by hand if they are no longer
+wanted.
 
 ## Storage
 
@@ -247,31 +301,39 @@ Everything served through the gateway gets `<name>.home.arpa`, a certificate
 in a `<name>-tls` secret, an HTTPRoute and an OPNsense DNS override, all derived
 from the name:
 
-- Simple container apps: add an entry to `local.apps` in `kubernetes/apps.tf`.
-- Devices outside the cluster: add an IP and port to `local.external_services`
-  in `kubernetes/external.tf`.
-- Any other in-cluster Service (for example from a Helm chart): add
-  `name = { namespace, port }` to `local.routed_apps` in `kubernetes/routes.tf`.
-  The Service must be called `name`.
+All of these are entries in `gitops/charts/homelab/values.yaml`:
 
-Set `auth = true` on an entry to put it behind basic auth (Traefik's basicAuth
-middleware, `kubernetes/auth.tf`). It is on for whoami, and
-off for apps that have their own login. Set or change the credentials with
+- Simple container apps: add an entry to `apps`.
+- Any other in-cluster Service (for example from a Helm chart): add
+  `name: { namespace, port }` to `routes`. The Service must be called `name`,
+  or set `service` to its name.
+- Devices outside the cluster: add an `ip` and `port` to `external`.
+
+Push the change for Argo CD to deploy it, then run `tofu apply` for the DNS
+record (and the basic auth Secret, for a new namespace with `auth: true`).
+
+Set `auth: true` on an entry to put it behind basic auth (Traefik's basicAuth
+middleware). It is on for whoami and hubble-ui, and off for apps that have
+their own login. Set or change the credentials with
 `scripts/set-basic-auth.sh [username]`, which writes
 `TF_VAR_basic_auth_htpasswd` to `.env`, then re-apply.
 
-Apps in `apps.tf` are stateless unless they set `data_size`. A stateless app can
+Apps are stateless unless they set `dataSize`. A stateless app can
 set `replicas` above 1; it then gets one replica per node where possible and a
-PodDisruptionBudget. An app with `data_size` gets a ReadWriteOnce PVC and always
-runs a single replica.
+PodDisruptionBudget. An app with `dataSize` gets a ReadWriteOnce PVC and always
+runs a single replica. The values file is public, so keep secrets out of `env`.
 
-```hcl
-whoami = {
-  image    = "traefik/whoami:v1.11.0"
-  port     = 80
-  replicas = 2
-}
+```yaml
+apps:
+  whoami:
+    image: traefik/whoami:v1.11.0
+    port: 80
+    replicas: 2
 ```
+
+Removing an app deletes its Deployment and Service but keeps its PVC, so the
+data on TrueNAS isn't lost by accident. Delete the PVC by hand if you no longer
+need it.
 
 ## DNS And Gateway API
 
@@ -287,9 +349,8 @@ Traefik uses:
 192.168.1.241
 ```
 
-Terraform downloads and manages the Gateway API standard CRDs at the pinned
-version declared in `kubernetes/providers.tf`; the Gateway and HTTPRoutes wait
-for those CRDs to be installed.
+Argo CD installs the Gateway API standard CRDs at the version pinned in
+`gitops/manifests/gateway-api/kustomization.yaml`.
 
 OpenTofu creates an OPNsense/Unbound host override pointing each app's
 `<name>.home.arpa` at `192.168.1.241`. Clients must use OPNsense for DNS to
@@ -339,11 +400,11 @@ Pushover:
   already critical.
 - `info` alerts and `InfoInhibitor` are not sent.
 
-`kubernetes/traefik-monitoring.tf` collects Traefik's metrics and adds
+`gitops/manifests/observability/traefik-monitoring.yaml` collects Traefik's metrics and adds
 `TraefikRouteErrorRateHigh` (over 10% of a route's requests returning 5xx for 10
 minutes).
 
-`kubernetes/cert-manager-monitoring.tf` collects cert-manager's metrics and adds
+`gitops/manifests/observability/cert-manager-monitoring.yaml` collects cert-manager's metrics and adds
 `CertificateNotRenewed` (a certificate has under 4 hours left, critical under 1
 hour; step-ca certificates last 24 hours and renew with 8 hours left) and
 `CertificateNotReady` (a certificate hasn't been issued for 15 minutes).
@@ -381,8 +442,16 @@ Pick namespaces and services (container names), and optionally add a LogsQL
 filter in Search, such as `timeout` or `"connection refused"`. It shows log lines
 and errors per service over time, and the matching log lines.
 
-Dashboards are JSON files in `kubernetes/dashboards/`; each one is loaded into
-Grafana through the `homelab-dashboards` ConfigMap.
+Dashboards are JSON files in `gitops/manifests/observability/dashboards/`; each
+one is listed in that directory's `kustomization.yaml` and loaded into Grafana
+through the `homelab-dashboards` ConfigMap.
+
+Log in to Grafana as `admin` with the password OpenTofu generated:
+
+```bash
+kubectl get secret grafana-admin -n observability \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
 
 ## Check The Cluster
 

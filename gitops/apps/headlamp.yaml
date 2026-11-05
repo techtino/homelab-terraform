@@ -1,0 +1,52 @@
+# Headlamp, using the built-in `view` role plus headlamp-gateway-readonly
+# (gitops/manifests/headlamp). Routed at headlamp.home.arpa by OpenTofu.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: headlamp
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: headlamp
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/headlamp/
+      chart: headlamp
+      targetRevision: 0.46.0
+      helm:
+        releaseName: headlamp
+        valuesObject:
+          fullnameOverride: headlamp
+          config:
+            inCluster: true
+            unsafeUseServiceAccountToken: false
+          serviceAccount:
+            create: true
+            name: headlamp
+          clusterRoleBinding:
+            create: true
+            clusterRoleName: view
+          service:
+            type: ClusterIP
+            port: 80
+          httpRoute:
+            enabled: false
+          ingress:
+            enabled: false
+    - repoURL: https://github.com/techtino/homelab-terraform.git
+      targetRevision: main
+      path: gitops/manifests/headlamp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

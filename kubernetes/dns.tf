@@ -1,6 +1,7 @@
+# An OPNsense/Unbound host override pointing each routed name at Traefik.
 resource "opnsense_unbound_host_override" "edge_services" {
   for_each = {
-    for name in keys(local.routed_apps) : "${name}.${local.domain}" => name
+    for name in keys(local.routed) : "${name}.${local.domain}" => name
   }
 
   enabled     = true

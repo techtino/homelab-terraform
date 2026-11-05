@@ -1,0 +1,62 @@
+# Everything served through the Traefik Gateway. Each name below gets
+# <name>.home.arpa: an HTTPRoute, a certificate in a <name>-tls Secret, a place
+# on the Gateway, and (from OpenTofu, which reads this file) a DNS record.
+#
+# auth: true puts a route behind basic auth. The credentials are a Secret that
+# OpenTofu creates in the route's namespace (kubernetes/auth.tf).
+#
+# This file is public: don't put secrets here.
+
+domain: home.arpa
+
+# Simple container apps, deployed in homelab-apps as a Deployment and Service
+# called <name>.
+#
+#   image           Container image, preferably with a pinned tag.
+#   port            Main web port (default 80).
+#   replicas        Default 1. Above 1 needs a stateless app (no dataSize); it
+#                   then gets one replica per node where possible and a
+#                   PodDisruptionBudget.
+#   dataSize        Size of a ReadWriteOnce PVC, e.g. 5Gi. Omit for stateless.
+#   dataMountPaths  Where the PVC is mounted (default [/config]).
+#   env             Environment variables.
+#   auth            See above.
+apps:
+  whoami:
+    image: traefik/whoami:v1.11.0
+    port: 80
+    replicas: 2
+    auth: true
+    env:
+      TZ: Europe/London
+
+# Other in-cluster Services, such as ones from Helm charts. The route goes to
+# the Service called <name>, or to `service` if set.
+routes:
+  headlamp:
+    namespace: headlamp
+    port: 80 # asks for a Kubernetes token
+  grafana:
+    namespace: observability
+    port: 80
+  hubble-ui:
+    namespace: kube-system
+    port: 80
+    auth: true # no login of its own
+  argocd:
+    namespace: argocd
+    service: argocd-server
+    port: 80
+
+# Devices outside the cluster, reached over HTTPS through a selector-less
+# Service in the traefik namespace. They have their own logins.
+external:
+  proxmox:
+    ip: 192.168.1.31
+    port: 8006
+  router:
+    ip: 192.168.1.1
+    port: 443
+  truenas:
+    ip: 192.168.1.118
+    port: 443

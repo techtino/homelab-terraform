@@ -1,0 +1,27 @@
+# Gateway API CRDs, used by Traefik and every HTTPRoute.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-api
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/techtino/homelab-terraform.git
+    targetRevision: main
+    path: gitops/manifests/gateway-api
+  syncPolicy:
+    automated:
+      # Never delete CRDs: that would delete every Gateway and HTTPRoute.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

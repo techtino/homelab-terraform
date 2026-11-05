@@ -1,0 +1,62 @@
+# step-ca, the internal CA, and step-issuer, which lets cert-manager use it.
+#
+# The CA's keys, passwords and config are made once and never rendered by the
+# chart (existingSecrets mode), so Argo CD can't overwrite them. The hooks in
+# gitops/manifests/step-ca create them on a new cluster and keep the
+# StepClusterIssuer's root certificate and provisioner key ID in step with the
+# CA.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: step-ca
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: step-ca
+  sources:
+    - repoURL: https://smallstep.github.io/helm-charts
+      chart: step-certificates
+      targetRevision: 1.30.0
+      helm:
+        releaseName: step-certificates
+        valuesObject:
+          bootstrap:
+            enabled: false
+            configmaps: false
+            secrets: false
+          existingSecrets:
+            enabled: true
+            ca: true
+          ca:
+            db:
+              enabled: true
+              persistent: true
+              storageClass: truenas-nvmeof
+              size: 1Gi
+            provisioner:
+              name: admin
+    - repoURL: https://smallstep.github.io/helm-charts
+      chart: step-issuer
+      targetRevision: 1.11.0
+      helm:
+        releaseName: step-issuer
+        valuesObject:
+          fullnameOverride: step-issuer
+    - repoURL: https://github.com/techtino/homelab-terraform.git
+      targetRevision: main
+      path: gitops/manifests/step-ca
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

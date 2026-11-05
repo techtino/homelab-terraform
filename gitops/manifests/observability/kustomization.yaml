@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cert-manager-monitoring.yaml
+  - traefik-monitoring.yaml
+
+# Dashboards in dashboards/ are loaded by Grafana's sidecar, which watches for
+# ConfigMaps with the grafana_dashboard label. List new dashboard files here.
+configMapGenerator:
+  - name: homelab-dashboards
+    namespace: observability
+    files:
+      - dashboards/service-logs.json
+      - dashboards/traefik.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"

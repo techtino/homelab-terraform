@@ -1,0 +1,243 @@
+# The whole metrics, logs and alerting stack: VictoriaMetrics and VictoriaLogs
+# storage, collectors, vmalert, Alertmanager and Grafana. The chart wires the
+# components (remote write, alert datasources, Grafana datasources) to each
+# other. gitops/manifests/observability adds the homelab dashboards and the
+# Traefik and cert-manager scrapes and alerts.
+#
+# The namespace and the alertmanager-config and grafana-admin Secrets are
+# created by OpenTofu (kubernetes/observability.tf), so no credentials are in
+# Git.
+#
+# Resource requests are close to observed usage so the scheduler can place pods
+# by real load. Memory limits stop a leak from exhausting a node. No CPU limits,
+# which would only cause throttling.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  sources:
+    - repoURL: https://victoriametrics.github.io/helm-charts/
+      chart: victoria-metrics-k8s-stack
+      targetRevision: 0.96.0
+      helm:
+        releaseName: vm-k8s-stack
+        valuesObject:
+          vmsingle:
+            enabled: true
+            name: vmsingle
+            spec:
+              retentionPeriod: "1" # months
+              resources:
+                requests: { cpu: 100m, memory: 512Mi }
+                limits: { memory: 2Gi }
+              storage:
+                storageClassName: truenas-nvmeof
+                resources:
+                  requests:
+                    storage: 100Gi
+
+          vlsingle:
+            enabled: true
+            name: vlogs
+            spec:
+              retentionPeriod: 7d
+              resources:
+                requests: { cpu: 50m, memory: 256Mi }
+                limits: { memory: 1Gi }
+              storage:
+                storageClassName: truenas-nvmeof
+                resources:
+                  requests:
+                    storage: 100Gi
+
+          # Runs on every node, including control planes, and ships all
+          # container logs to VictoriaLogs.
+          vlagent:
+            enabled: true
+            name: vlagent
+            spec:
+              k8sCollector:
+                enabled: true
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { memory: 256Mi }
+              tolerations:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: Exists
+                  effect: NoSchedule
+
+          # Evaluates the chart's default alert rules. Alert state is written
+          # back to VictoriaMetrics so it survives vmalert restarts.
+          vmalert:
+            enabled: true
+            name: vmalert
+            spec:
+              resources:
+                requests: { cpu: 50m, memory: 96Mi }
+                limits: { memory: 512Mi }
+
+          # A short name keeps the operator's StatefulSet name, and with it the
+          # pod's controller-revision-hash label, under 63 characters.
+          alertmanager:
+            enabled: true
+            name: alertmanager
+            spec:
+              configSecret: alertmanager-config
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { memory: 256Mi }
+
+          kubeEtcd:
+            enabled: true
+            service:
+              port: 2381
+              targetPort: 2381
+            vmScrape:
+              spec:
+                endpoints:
+                  - port: http-metrics
+                    scheme: http
+                    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+                    tlsConfig: null
+
+          kubeControllerManager:
+            enabled: true
+            vmScrape:
+              spec:
+                endpoints:
+                  - port: http-metrics
+                    scheme: https
+                    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+                    tlsConfig:
+                      insecureSkipVerify: true
+
+          kubeScheduler:
+            enabled: true
+            vmScrape:
+              spec:
+                endpoints:
+                  - port: http-metrics
+                    scheme: https
+                    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+                    tlsConfig:
+                      insecureSkipVerify: true
+
+          vmagent:
+            enabled: true
+            spec:
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 512Mi }
+
+          defaultDashboards:
+            enabled: true
+            labels:
+              grafana_dashboard: "1"
+
+          # With both VictoriaMetrics and VictoriaLogs enabled, the chart puts a
+          # vmauth in front of them as vmalert's datasource, routing LogsQL
+          # queries to VictoriaLogs so rules can alert on logs too.
+          internal:
+            vmauth:
+              spec:
+                resources:
+                  requests: { cpu: 10m, memory: 32Mi }
+                  limits: { memory: 128Mi }
+
+          victoria-metrics-operator:
+            operator:
+              disable_prometheus_converter: true
+            # The chart would otherwise generate a new webhook certificate on
+            # every render, which Argo CD would see as a change on every sync.
+            admissionWebhooks:
+              certManager:
+                enabled: true
+            resources:
+              requests: { cpu: 20m, memory: 96Mi }
+              limits: { memory: 256Mi }
+
+          kube-state-metrics:
+            resources:
+              requests: { cpu: 20m, memory: 96Mi }
+              limits: { memory: 256Mi }
+
+          prometheus-node-exporter:
+            resources:
+              requests: { cpu: 20m, memory: 64Mi }
+              limits: { memory: 128Mi }
+
+          # Datasources for VictoriaMetrics, VictoriaLogs and Alertmanager are
+          # provisioned by the chart. The plugin datasources are only added
+          # when their plugin is listed here.
+          grafana:
+            enabled: true
+
+            # Matches the Service name the grafana route points at
+            # (gitops/charts/homelab/values.yaml).
+            fullnameOverride: grafana
+
+            # Without an existing Secret the chart generates a new random
+            # password on every render, which Argo CD would keep re-applying.
+            admin:
+              existingSecret: grafana-admin
+
+            service:
+              type: ClusterIP
+              port: 80
+
+            persistence:
+              enabled: true
+              type: pvc
+              storageClassName: truenas-nvmeof
+              size: 5Gi
+
+            plugins:
+              - victoriametrics-metrics-datasource
+              - victoriametrics-logs-datasource
+
+            resources:
+              requests: { cpu: 50m, memory: 768Mi }
+              limits: { memory: 1536Mi }
+
+            # The ReadWriteOnce PVC can only attach to one node, so stop the old
+            # pod before starting the new one instead of rolling.
+            deploymentStrategy:
+              type: Recreate
+
+            sidecar:
+              resources:
+                requests: { cpu: 10m, memory: 128Mi }
+                limits: { memory: 256Mi }
+              dashboards:
+                searchNamespace: observability
+    - repoURL: https://github.com/techtino/homelab-terraform.git
+      targetRevision: main
+      path: gitops/manifests/observability
+  # cert-manager's cainjector fills in the operator webhook's CA bundle.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The VictoriaMetrics CRDs are too large for client-side apply's
+      # last-applied annotation.
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

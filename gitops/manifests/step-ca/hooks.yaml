@@ -1,0 +1,209 @@
+# Argo CD hooks for step-ca (gitops/apps/step-ca.yaml).
+#
+# step-ca-init (before each sync) makes the CA's config, keys and passwords if
+# they don't exist yet. It does nothing once the step-certificates-secrets
+# Secret exists, so the CA is never regenerated. A CA made by the chart's own
+# bootstrap (which kept the encrypted keys in a ConfigMap) is moved into that
+# Secret unchanged.
+#
+# step-issuer-config (after each sync) points the StepClusterIssuer at the
+# CA's current root certificate and provisioner key.
+#
+# The service account and its permissions are hooks too, so they exist before
+# the first Job runs; Argo CD replaces them on each sync.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: step-ca-bootstrap
+  namespace: step-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: step-ca-bootstrap
+  namespace: step-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, secrets]
+    verbs: [get, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: step-ca-bootstrap
+  namespace: step-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: step-ca-bootstrap
+    namespace: step-ca
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: step-ca-bootstrap
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: step-ca-bootstrap
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  - apiGroups: [certmanager.step.sm]
+    resources: [stepclusterissuers]
+    verbs: [get, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: step-ca-bootstrap
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: step-ca-bootstrap
+    namespace: step-ca
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: step-ca-bootstrap
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: step-ca-init
+  namespace: step-ca
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: step-ca-bootstrap
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+        - name: init
+          image: cr.smallstep.com/smallstep/step-ca-bootstrap:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              NS=step-ca
+              apply() { kubectl -n "$NS" "$@" --dry-run=client -o yaml | kubectl apply -f -; }
+
+              if kubectl -n "$NS" get secret step-certificates-secrets >/dev/null 2>&1; then
+                echo "CA already set up."
+                exit 0
+              fi
+
+              if kubectl -n "$NS" get configmap step-certificates-secrets >/dev/null 2>&1; then
+                echo "Moving the existing CA keys from the ConfigMap into a Secret."
+                cd /tmp
+                kubectl -n "$NS" get configmap step-certificates-secrets -o jsonpath='{.data.root_ca_key}' > root_ca_key
+                kubectl -n "$NS" get configmap step-certificates-secrets -o jsonpath='{.data.intermediate_ca_key}' > intermediate_ca_key
+                apply create secret generic step-certificates-secrets \
+                  --from-file=root_ca_key --from-file=intermediate_ca_key
+                exit 0
+              fi
+
+              echo "Creating a new CA."
+              CA_PASSWORD=$(head -c 512 /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
+              PROVISIONER_PASSWORD=$(head -c 512 /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
+              printf '%s' "$CA_PASSWORD" > /tmp/ca-password
+              printf '%s' "$PROVISIONER_PASSWORD" > /tmp/provisioner-password
+
+              step ca init \
+                --name "Step Certificates" \
+                --dns "step-certificates.step-ca.svc.cluster.local,127.0.0.1" \
+                --address ":9000" \
+                --provisioner admin \
+                --with-ca-url "https://step-certificates.step-ca.svc.cluster.local" \
+                --password-file /tmp/ca-password \
+                --provisioner-password-file /tmp/provisioner-password
+
+              apply create configmap step-certificates-config --from-file "$(step path)/config"
+              apply create configmap step-certificates-certs --from-file "$(step path)/certs"
+              apply create secret generic step-certificates-ca-password --from-literal "password=$CA_PASSWORD"
+              apply create secret generic step-certificates-provisioner-password --from-literal "password=$PROVISIONER_PASSWORD"
+              # Created last: its existence marks the CA as complete.
+              apply create secret generic step-certificates-secrets --from-file "$(step path)/secrets"
+
+              echo "Root fingerprint: $(step certificate fingerprint "$(step path)/certs/root_ca.crt")"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: step-issuer-config
+  namespace: step-ca
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: step-ca-bootstrap
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+        - name: issuer
+          image: cr.smallstep.com/smallstep/step-ca-bootstrap:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              NS=step-ca
+              CA_BUNDLE=$(kubectl -n "$NS" get configmap step-certificates-certs \
+                -o jsonpath='{.data.root_ca\.crt}' | base64 | tr -d '\n')
+              # The only provisioner in ca.json is "admin"; its key ID is the
+              # first "kid" in the file.
+              KID=$(kubectl -n "$NS" get configmap step-certificates-config \
+                -o jsonpath='{.data.ca\.json}' | tr -d '\n' \
+                | grep -o '"kid": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')
+              test -n "$CA_BUNDLE" && test -n "$KID"
+
+              kubectl apply -f - <<EOF
+              apiVersion: certmanager.step.sm/v1beta1
+              kind: StepClusterIssuer
+              metadata:
+                name: step-issuer
+              spec:
+                url: https://step-certificates.step-ca.svc.cluster.local
+                caBundle: $CA_BUNDLE
+                provisioner:
+                  name: admin
+                  kid: $KID
+                  passwordRef:
+                    name: step-certificates-provisioner-password
+                    namespace: step-ca
+                    key: password
+              EOF

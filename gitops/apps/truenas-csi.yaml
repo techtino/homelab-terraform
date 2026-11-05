@@ -1,0 +1,48 @@
+# TrueNAS CSI driver and the truenas-nvmeof StorageClass. The namespace and the
+# truenas-api-credentials Secret are created by OpenTofu (kubernetes/storage.tf).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: truenas-csi
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: truenas-csi
+  sources:
+    - repoURL: https://raw.githubusercontent.com/truenas/truenas-csi/master/charts
+      chart: truenas-csi
+      targetRevision: 1.4.0
+      helm:
+        releaseName: truenas-csi
+        valuesObject:
+          truenas:
+            url: wss://192.168.1.118
+            defaultPool: FastNAS
+            nvmeofPortal: 192.168.1.118:4420
+            insecureSkipTLS: true
+            existingSecret: truenas-api-credentials
+            existingSecretKey: api-key
+          # Deleting a VolumeSnapshot also deletes the ZFS snapshot on TrueNAS.
+          volumeSnapshotClass:
+            enabled: true
+            deletionPolicy: Delete
+            annotations:
+              snapshot.storage.kubernetes.io/is-default-class: "true"
+    - repoURL: https://github.com/techtino/homelab-terraform.git
+      targetRevision: main
+      path: gitops/manifests/storage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
