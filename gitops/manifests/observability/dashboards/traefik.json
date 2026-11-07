@@ -472,7 +472,25 @@
               }
             ]
           },
-          "unit": "s"
+          "unit": "s",
+          "links": [
+            {
+              "title": "Traces for ${__field.labels.service}",
+              "url": "",
+              "internal": {
+                "datasourceUid": "VictoriaTraces",
+                "datasourceName": "VictoriaTraces",
+                "query": {
+                  "refId": "A",
+                  "queryType": "search",
+                  "service": "traefik",
+                  "operation": "Service",
+                  "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                  "limit": 20
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -571,7 +589,25 @@
               }
             ]
           },
-          "unit": "reqps"
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "Traces for ${__field.labels.service}",
+              "url": "",
+              "internal": {
+                "datasourceUid": "VictoriaTraces",
+                "datasourceName": "VictoriaTraces",
+                "query": {
+                  "refId": "A",
+                  "queryType": "search",
+                  "service": "traefik",
+                  "operation": "Service",
+                  "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                  "limit": 20
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -676,7 +712,26 @@
                   }
                 ]
               },
-              "unit": "percentunit"
+              "unit": "percentunit",
+              "links": [
+                {
+                  "title": "Traces over 1.2s for ${__field.labels.service}",
+                  "url": "",
+                  "internal": {
+                    "datasourceUid": "VictoriaTraces",
+                    "datasourceName": "VictoriaTraces",
+                    "query": {
+                      "refId": "A",
+                      "queryType": "search",
+                      "service": "traefik",
+                      "operation": "Service",
+                      "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                      "limit": 20,
+                      "minDuration": "1.2s"
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           },
@@ -771,7 +826,26 @@
                   }
                 ]
               },
-              "unit": "percentunit"
+              "unit": "percentunit",
+              "links": [
+                {
+                  "title": "Traces over 300ms for ${__field.labels.service}",
+                  "url": "",
+                  "internal": {
+                    "datasourceUid": "VictoriaTraces",
+                    "datasourceName": "VictoriaTraces",
+                    "query": {
+                      "refId": "A",
+                      "queryType": "search",
+                      "service": "traefik",
+                      "operation": "Service",
+                      "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                      "limit": 20,
+                      "minDuration": "300ms"
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           },
@@ -887,7 +961,25 @@
               }
             ]
           },
-          "unit": "reqps"
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "Traces for ${__field.labels.service}",
+              "url": "",
+              "internal": {
+                "datasourceUid": "VictoriaTraces",
+                "datasourceName": "VictoriaTraces",
+                "query": {
+                  "refId": "A",
+                  "queryType": "search",
+                  "service": "traefik",
+                  "operation": "Service",
+                  "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                  "limit": 20
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -987,7 +1079,25 @@
               }
             ]
           },
-          "unit": "reqps"
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "Traces for ${__field.labels.service}",
+              "url": "",
+              "internal": {
+                "datasourceUid": "VictoriaTraces",
+                "datasourceName": "VictoriaTraces",
+                "query": {
+                  "refId": "A",
+                  "queryType": "search",
+                  "service": "traefik",
+                  "operation": "Service",
+                  "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                  "limit": 20
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -1087,7 +1197,25 @@
               }
             ]
           },
-          "unit": "reqps"
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "Traces for ${__field.labels.service}",
+              "url": "",
+              "internal": {
+                "datasourceUid": "VictoriaTraces",
+                "datasourceName": "VictoriaTraces",
+                "query": {
+                  "refId": "A",
+                  "queryType": "search",
+                  "service": "traefik",
+                  "operation": "Service",
+                  "tags": "traefik.service.name=${__field.labels.service}@kubernetesgateway",
+                  "limit": 20
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },

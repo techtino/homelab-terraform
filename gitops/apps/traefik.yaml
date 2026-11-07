@@ -71,6 +71,11 @@ spec:
                   scheme: https
                   permanent: true
           websecure:
+            # Adds router and service spans to each trace. The service span's
+            # traefik.service.name is what the Traefik dashboard's trace links
+            # search on.
+            observability:
+              traceVerbosity: detailed
             http:
               # Strip client-supplied X-Remote-User before basic auth sets it.
               middlewares:
