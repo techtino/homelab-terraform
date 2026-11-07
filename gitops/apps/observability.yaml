@@ -56,6 +56,24 @@ spec:
                   requests:
                     storage: 100Gi
 
+          # Trace storage. Ingests OTLP at
+          # http://vtsingle-vtraces.observability.svc:10428/insert/opentelemetry/v1/traces
+          # and is added to Grafana as a Jaeger datasource (Explore →
+          # VictoriaTraces).
+          vtsingle:
+            enabled: true
+            name: vtraces
+            spec:
+              retentionPeriod: 7d
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 1Gi }
+              storage:
+                storageClassName: truenas-nvmeof
+                resources:
+                  requests:
+                    storage: 50Gi
+
           # Runs on every node, including control planes, and ships all
           # container logs to VictoriaLogs.
           vlagent:

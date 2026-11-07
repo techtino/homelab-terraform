@@ -12,7 +12,7 @@ The cluster uses:
 - cert-manager with an in-cluster step-ca for internal TLS
 - Headlamp for web management
 - Argo CD deploying the workloads in `gitops/` from Git
-- VictoriaMetrics, VictoriaLogs and Grafana for observability
+- VictoriaMetrics, VictoriaLogs, VictoriaTraces and Grafana for observability
 - vmalert and Alertmanager for alerts sent to Pushover
 
 ## Before You Start
