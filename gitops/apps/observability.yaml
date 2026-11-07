@@ -82,6 +82,11 @@ spec:
             spec:
               k8sCollector:
                 enabled: true
+                # Fields used as the log message, first match wins. The
+                # default is message, msg, log; Traefik's JSON access log has
+                # an empty msg, so its RequestLine ("GET /path HTTP/2.0") goes
+                # first.
+                msgFields: [RequestLine, message, msg, log]
               resources:
                 requests: { cpu: 20m, memory: 64Mi }
                 limits: { memory: 256Mi }
@@ -152,6 +157,40 @@ spec:
               resources:
                 requests: { cpu: 50m, memory: 128Mi }
                 limits: { memory: 512Mi }
+
+          # The chart fills in each datasource's url. These lists replace the
+          # chart's defaults, so they restate them and add trace/log links:
+          # a span's "Logs for this span" opens every log line with the same
+          # trace_id, and a log line's trace_id links to the trace.
+          defaultDatasources:
+            victoriatraces:
+              datasources:
+                - name: VictoriaTraces
+                  access: proxy
+                  uid: VictoriaTraces
+                  type: jaeger
+                  jsonData:
+                    tracesToLogsV2:
+                      datasourceUid: VictoriaLogs
+                      customQuery: true
+                      query: 'trace_id:="${__trace.traceId}"'
+                      spanStartTimeShift: -5m
+                      spanEndTimeShift: 5m
+            victorialogs:
+              datasources:
+                - name: VictoriaLogs (DS)
+                  access: proxy
+                  uid: VictoriaLogs
+                  type: victoriametrics-logs-datasource
+                  plugin: true
+                  jsonData:
+                    derivedFields:
+                      - name: Trace
+                        matcherType: label
+                        matcherRegex: trace_id
+                        url: '${__value.raw}'
+                        urlDisplayLabel: View trace
+                        datasourceUid: VictoriaTraces
 
           defaultDashboards:
             enabled: true

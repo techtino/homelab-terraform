@@ -41,6 +41,18 @@ spec:
               enabled: true
               endpoint: http://vtsingle-vtraces.observability.svc:10428/insert/opentelemetry/v1/traces
 
+        # One JSON line per request on stdout, collected by vlagent into
+        # VictoriaLogs. With tracing on, each line carries trace_id and span_id,
+        # which Grafana uses to link traces and logs both ways. Headers are
+        # dropped (the chart default) and so are query parameters, so tokens
+        # in either don't end up in the logs.
+        accessLog:
+          enabled: true
+          format: json
+          fields:
+            queryParameters:
+              defaultMode: drop
+
         service:
           type: LoadBalancer
           spec:
