@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - cert-manager-monitoring.yaml
+  - grafana-db.yaml
   - traefik-monitoring.yaml
 
 # Dashboards in dashboards/ are loaded by Grafana's sidecar, which watches for

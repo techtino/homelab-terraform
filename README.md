@@ -13,6 +13,7 @@ The cluster uses:
 - Headlamp for web management
 - Argo CD deploying the workloads in `gitops/` from Git
 - VictoriaMetrics, VictoriaLogs, VictoriaTraces and Grafana for observability
+- CloudNativePG for PostgreSQL, used by Grafana so it can run two replicas
 - vmalert and Alertmanager for alerts sent to Pushover
 
 ## Before You Start

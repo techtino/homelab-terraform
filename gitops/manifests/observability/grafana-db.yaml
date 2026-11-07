@@ -1,0 +1,29 @@
+# Grafana's database, so several Grafana replicas can share users, sessions
+# and settings. Two instances, one per worker: a primary and a streaming
+# replica that CloudNativePG promotes if the primary's node fails.
+#
+# CloudNativePG creates the grafana-db-app Secret (username, password, ...)
+# that Grafana reads, and the grafana-db-rw Service that always points at the
+# current primary.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: grafana-db
+  namespace: observability
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: grafana
+      owner: grafana
+  storage:
+    storageClass: truenas-nvmeof
+    size: 2Gi
+  # Never put both instances on one node.
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
