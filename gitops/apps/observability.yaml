@@ -84,9 +84,9 @@ spec:
                 enabled: true
                 # Fields used as the log message, first match wins. The
                 # default is message, msg, log; Traefik's JSON access log has
-                # an empty msg, so its RequestLine ("GET /path HTTP/2.0") goes
+                # an empty msg and no RequestLine, so its RequestPath goes
                 # first.
-                msgFields: [RequestLine, message, msg, log]
+                msgFields: [RequestPath, message, msg, log]
               resources:
                 requests: { cpu: 20m, memory: 64Mi }
                 limits: { memory: 256Mi }
