@@ -14,7 +14,8 @@ The cluster uses:
 - Argo CD deploying the workloads in `gitops/` from Git
 - VictoriaMetrics, VictoriaLogs, VictoriaTraces and Grafana for observability
 - CloudNativePG for PostgreSQL, used by Grafana so it can run two replicas
-- KubeVirt for running virtual machines as Kubernetes workloads
+- KubeVirt for running virtual machines as Kubernetes workloads, with CDI
+  importing their disks onto TrueNAS volumes
 - vmalert and Alertmanager for alerts sent to Pushover
 
 ## Before You Start

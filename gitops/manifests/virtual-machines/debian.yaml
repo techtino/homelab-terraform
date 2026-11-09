@@ -1,5 +1,9 @@
-# An example Debian 13 VM. The disk is a container image, so it is reset to
-# the image every time the VM restarts: a scratch VM, not a place for data.
+# An example Debian 13 VM with its disk on TrueNAS. On first boot CDI creates
+# a truenas-nvmeof PVC (debian-root) and copies the Debian cloud image onto it;
+# after that the VM boots from the PVC, so its data survives restarts.
+#
+# Deleting this VM deletes the PVC and its data (the storage class uses
+# reclaimPolicy: Delete).
 #
 #   virtctl console debian -n vms
 #   virtctl ssh debian@vm/debian -n vms
@@ -10,6 +14,23 @@ metadata:
   namespace: vms
 spec:
   runStrategy: Always
+  dataVolumeTemplates:
+    - metadata:
+        name: debian-root
+      spec:
+        source:
+          http:
+            url: https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2
+        storage:
+          storageClassName: truenas-nvmeof
+          # CDI has no storage profile for the TrueNAS driver, so say what it
+          # supports: one node at a time, mounted as a filesystem.
+          accessModes:
+            - ReadWriteOnce
+          volumeMode: Filesystem
+          resources:
+            requests:
+              storage: 10Gi
   template:
     metadata:
       labels:
@@ -44,8 +65,8 @@ spec:
               noCloud: {}
       volumes:
         - name: root
-          containerDisk:
-            image: quay.io/containerdisks/debian:13
+          dataVolume:
+            name: debian-root
         - name: cloud-init
           cloudInitNoCloud:
             userData: |

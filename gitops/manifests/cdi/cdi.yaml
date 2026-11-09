@@ -1,0 +1,23 @@
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: CDI
+metadata:
+  name: cdi
+  annotations:
+    # Created after the operator's CRD in the same sync.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  # Refuse to uninstall while any DataVolumes exist.
+  uninstallStrategy: BlockUninstallIfWorkloadsExist
+  config:
+    # Temporary space some imports need. The cluster has no default storage
+    # class, so name it.
+    scratchSpaceStorageClass: truenas-nvmeof
+    featureGates:
+      - HonorWaitForFirstConsumer
+  imagePullPolicy: IfNotPresent
+  infra:
+    nodeSelector:
+      kubernetes.io/os: linux
+  workload:
+    nodeSelector:
+      kubernetes.io/os: linux
