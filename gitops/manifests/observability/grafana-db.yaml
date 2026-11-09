@@ -16,9 +16,13 @@ spec:
     initdb:
       database: grafana
       owner: grafana
+  # Sized for WAL, not data: Grafana's data is small, but CloudNativePG keeps
+  # up to max_wal_size (1GB) plus wal_keep_size (512MB) of WAL, and
+  # archive_timeout forces a new 16MB segment every 5 minutes. At 2Gi both
+  # instances ran out of space and refused to start.
   storage:
     storageClass: truenas-nvmeof
-    size: 2Gi
+    size: 8Gi
   # Never put both instances on one node.
   affinity:
     enablePodAntiAffinity: true
