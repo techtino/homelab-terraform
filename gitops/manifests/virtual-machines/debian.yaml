@@ -24,10 +24,13 @@ spec:
         storage:
           storageClassName: truenas-nvmeof
           # CDI has no storage profile for the TrueNAS driver, so say what it
-          # supports: one node at a time, mounted as a filesystem.
+          # supports: one node at a time. Block, not Filesystem: for a
+          # filesystem volume CDI adds about 6% for filesystem overhead, and
+          # TrueNAS rejects ZVOL sizes that aren't a multiple of the 16K
+          # block size. A block volume stays exactly the size requested.
           accessModes:
             - ReadWriteOnce
-          volumeMode: Filesystem
+          volumeMode: Block
           resources:
             requests:
               storage: 10Gi
