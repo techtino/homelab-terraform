@@ -1,0 +1,19 @@
+apiVersion: kubevirt.io/v1
+kind: KubeVirt
+metadata:
+  name: kubevirt
+  namespace: kubevirt
+  annotations:
+    # Created after the operator's CRD in the same sync.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  # Refuse to uninstall while any VMs exist.
+  uninstallStrategy: BlockUninstallIfWorkloadsExist
+  configuration:
+    developerConfiguration:
+      featureGates: []
+  # Restart running VMs onto the new virt-launcher after an upgrade. Live
+  # migration needs ReadWriteMany disks, which TrueNAS NVMe-oF does not offer.
+  workloadUpdateStrategy:
+    workloadUpdateMethods:
+      - Evict

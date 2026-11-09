@@ -1,0 +1,34 @@
+# KubeVirt: runs virtual machines as pods, using KVM on the workers. The
+# Proxmox VMs use CPU type "host", so nested virtualization gives each worker a
+# /dev/kvm. gitops/manifests/kubevirt holds the operator and the KubeVirt
+# resource that tells it to install. The VMs themselves are in
+# gitops/apps/virtual-machines.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kubevirt
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/techtino/homelab-terraform.git
+    targetRevision: main
+    path: gitops/manifests/kubevirt
+  syncPolicy:
+    automated:
+      # Never delete the CRDs or the KubeVirt resource: that would delete
+      # every VirtualMachine.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      # The KubeVirt CRD comes from the operator manifest in the same sync.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

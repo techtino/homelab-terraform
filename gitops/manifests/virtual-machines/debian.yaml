@@ -1,0 +1,59 @@
+# An example Debian 13 VM. The disk is a container image, so it is reset to
+# the image every time the VM restarts: a scratch VM, not a place for data.
+#
+#   virtctl console debian -n vms
+#   virtctl ssh debian@vm/debian -n vms
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: debian
+  namespace: vms
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: debian
+    spec:
+      domain:
+        cpu:
+          cores: 1
+        memory:
+          guest: 1Gi
+        devices:
+          disks:
+            - name: root
+              disk:
+                bus: virtio
+            - name: cloud-init
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+      networks:
+        - name: default
+          pod: {}
+      # Adds the keys in the vm-ssh-keys Secret to the debian user.
+      accessCredentials:
+        - sshPublicKey:
+            source:
+              secret:
+                secretName: vm-ssh-keys
+            propagationMethod:
+              noCloud: {}
+      volumes:
+        - name: root
+          containerDisk:
+            image: quay.io/containerdisks/debian:13
+        - name: cloud-init
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: debian
+              hostname: debian
+              package_update: true
+              packages:
+                - qemu-guest-agent
+              runcmd:
+                - systemctl enable --now qemu-guest-agent

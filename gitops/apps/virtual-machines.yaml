@@ -1,0 +1,30 @@
+# KubeVirt VirtualMachines (gitops/manifests/virtual-machines). Their namespace
+# and SSH key Secret are created by OpenTofu (kubernetes/virtual-machines.tf).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: virtual-machines
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vms
+  source:
+    repoURL: https://github.com/techtino/homelab-terraform.git
+    targetRevision: main
+    path: gitops/manifests/virtual-machines
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      # The VirtualMachine CRD comes from the kubevirt Application.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
