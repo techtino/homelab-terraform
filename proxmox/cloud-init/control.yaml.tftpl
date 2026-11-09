@@ -134,6 +134,9 @@ runcmd:
   - containerd config default > /etc/containerd/config.toml
   - sed -i '/^disabled_plugins =/d' /etc/containerd/config.toml
   - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  # Give pods' block volumes to the pod's user, so non-root pods such as
+  # KubeVirt's disk importer can open them.
+  - sed -i 's/device_ownership_from_security_context = false/device_ownership_from_security_context = true/' /etc/containerd/config.toml
   - sed -i 's#sandbox_image = .*#sandbox_image = "registry.k8s.io/pause:3.10.1"#' /etc/containerd/config.toml
   - systemctl enable containerd
   - systemctl restart containerd
