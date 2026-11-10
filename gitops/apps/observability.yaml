@@ -151,6 +151,25 @@ spec:
                     tlsConfig:
                       insecureSkipVerify: true
 
+          # The chart copies every node label onto every kubelet and cAdvisor
+          # series. KubeVirt adds ~380 cpu-feature/host-model labels per node,
+          # pushing each series past vmsingle's label limit so all kubelet
+          # metrics (container usage, volume stats, ...) were rejected. Drop
+          # the KubeVirt labels first; the other three rules are the chart's
+          # defaults, repeated because Helm replaces lists rather than merging.
+          kubelet:
+            vmScrape:
+              spec:
+                relabelConfigs:
+                  - action: labeldrop
+                    regex: __meta_kubernetes_node_label_.*kubevirt_io.*
+                  - action: labelmap
+                    regex: __meta_kubernetes_node_label_(.+)
+                  - sourceLabels: [__metrics_path__]
+                    targetLabel: metrics_path
+                  - targetLabel: job
+                    replacement: kubelet
+
           vmagent:
             enabled: true
             spec:
