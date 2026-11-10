@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - cert-manager-monitoring.yaml
+  - cnpg-monitoring.yaml
   - grafana-db.yaml
   - traefik-monitoring.yaml
 

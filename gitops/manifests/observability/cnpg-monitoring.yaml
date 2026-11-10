@@ -1,0 +1,73 @@
+# Collect CloudNativePG's per-instance metrics (port "metrics", 9187) from
+# every Postgres cluster, and alert on replication problems that would
+# otherwise only show up once a volume is full.
+#
+# The failure this catches: a replica breaks (e.g. corrupt WAL) and stops
+# consuming its replication slot on the primary. The primary then keeps every
+# WAL segment since, about 300MB/hour for grafana-db, until its volume fills
+# and it refuses to start. KubePodCrashLooping and
+# KubePersistentVolumeFillingUp from the k8s-stack fire too, but the slot
+# alerts point at the cause and fire hours before the disk is in danger.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: cnpg
+  namespace: observability
+spec:
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: cnpg
+  namespace: observability
+spec:
+  groups:
+    - name: cnpg
+      rules:
+        # Slots are only consumed on the primary; CloudNativePG may also keep
+        # synced copies on replicas, which are inactive by design. Hence the
+        # `in_recovery == 0` filter.
+        - alert: CNPGReplicationSlotInactive
+          expr: |
+            cnpg_pg_replication_slots_active == 0
+              and on (namespace, pod) cnpg_pg_replication_in_recovery == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Replication slot {{ $labels.slot_name }} on {{ $labels.namespace }}/{{ $labels.pod }} has no replica connected.
+            description: >-
+              The replica behind this slot hasn't been streaming for 15 minutes,
+              so the primary is keeping all WAL for it. Check the replica pod's
+              logs. If its data is broken, delete its PVC and pod so
+              CloudNativePG re-clones it from the primary.
+        - alert: CNPGReplicationSlotRetainingWAL
+          expr: |
+            cnpg_pg_replication_slots_pg_wal_lsn_diff > 2 * 1024 * 1024 * 1024
+              and on (namespace, pod) cnpg_pg_replication_in_recovery == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: Replication slot {{ $labels.slot_name }} on {{ $labels.namespace }}/{{ $labels.pod }} is holding {{ $value | humanize1024 }}B of WAL.
+            description: >-
+              The primary can't recycle WAL until this slot's replica catches up,
+              and will refuse to start once its volume is full. Fix or rebuild
+              the replica.
+        - alert: CNPGReplicaNotStreaming
+          expr: |
+            cnpg_pg_replication_is_wal_receiver_up == 0
+              and on (namespace, pod) cnpg_pg_replication_in_recovery == 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Replica {{ $labels.namespace }}/{{ $labels.pod }} isn't receiving WAL from the primary.
+            description: The replica is running but its WAL receiver has been down for 10 minutes. Check its logs and the primary's.

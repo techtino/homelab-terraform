@@ -2,7 +2,7 @@
 # storage, collectors, vmalert, Alertmanager and Grafana. The chart wires the
 # components (remote write, alert datasources, Grafana datasources) to each
 # other. gitops/manifests/observability adds the homelab dashboards and the
-# Traefik and cert-manager scrapes and alerts.
+# Traefik, cert-manager and CloudNativePG scrapes and alerts.
 #
 # The namespace and the alertmanager-config and grafana-admin Secrets are
 # created by OpenTofu (kubernetes/observability.tf), so no credentials are in
