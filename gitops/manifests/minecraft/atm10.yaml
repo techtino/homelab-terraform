@@ -59,10 +59,14 @@ spec:
                 secretKeyRef:
                   name: curseforge
                   key: api-key
-            # Java heap. The container limit below leaves ~1.5Gi on top for
-            # the JVM's off-heap memory.
+            # Java heap: 8G is what the pack's memorysettings mod recommends
+            # on a 16GB machine. Aikar's flags commit all of it at startup, and
+            # ATM10's ~500 mods need about 2-3Gi more outside the heap (loaded
+            # classes, compiled code, buffers for backups and networking). Keep
+            # the container limit below about 4Gi above this; at 1.5Gi above,
+            # the container was OOMKilled during a backup.
             - name: MEMORY
-              value: 6G
+              value: 8G
             - name: USE_AIKAR_FLAGS
               value: "true"
             # Some ATM10 mods (jetpacks, flying items) trip the vanilla
@@ -86,9 +90,9 @@ spec:
           resources:
             requests:
               cpu: "2"
-              memory: 7Gi
+              memory: 11Gi
             limits:
-              memory: 7.5Gi
+              memory: 12Gi
           # The first start downloads several hundred mods and generates the
           # world, which can take a long time; allow up to 30 minutes.
           startupProbe:
