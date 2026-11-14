@@ -1,0 +1,136 @@
+# All the Mods 10 (NeoForge, Minecraft 1.21.1) on itzg/minecraft-server.
+# On first start the image downloads the modpack's server files from
+# CurseForge into /data; later starts reuse them, and upgrade to the newest
+# ATM10 release if one has come out. The world lives in /data too.
+#
+# Players connect to minecraft.home.arpa (192.168.1.242) on the default port.
+#
+#   kubectl logs -f -n minecraft deploy/atm10
+#   kubectl exec -it -n minecraft deploy/atm10 -- rcon-cli   # server console
+
+# Server files and world. Kept if removed from Git, as deleting it would
+# delete the volume on TrueNAS; delete the PVC by hand.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: atm10-data
+  namespace: minecraft
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: truenas-nvmeof
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atm10
+  namespace: minecraft
+spec:
+  replicas: 1
+  # A ReadWriteOnce volume can only be mounted by one pod at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: atm10
+  template:
+    metadata:
+      labels:
+        app: atm10
+    spec:
+      # The server saves the world when it stops; give it time to finish.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: minecraft
+          image: itzg/minecraft-server:2026.11.0-java21
+          env:
+            - name: EULA
+              value: "TRUE"
+            - name: TYPE
+              value: AUTO_CURSEFORGE
+            - name: CF_SLUG
+              value: all-the-mods-10
+            - name: CF_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: curseforge
+                  key: api-key
+            # Java heap. The container limit below leaves ~1.5Gi on top for
+            # the JVM's off-heap memory.
+            - name: MEMORY
+              value: 6G
+            - name: USE_AIKAR_FLAGS
+              value: "true"
+            # Some ATM10 mods (jetpacks, flying items) trip the vanilla
+            # anti-fly check.
+            - name: ALLOW_FLIGHT
+              value: "TRUE"
+            - name: MOTD
+              value: All the Mods 10
+            - name: DIFFICULTY
+              value: normal
+            - name: MAX_PLAYERS
+              value: "10"
+            - name: VIEW_DISTANCE
+              value: "10"
+            - name: TZ
+              value: Europe/London
+          ports:
+            - name: minecraft
+              containerPort: 25565
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+              memory: 7Gi
+            limits:
+              memory: 7.5Gi
+          # The first start downloads several hundred mods and generates the
+          # world, which can take a long time; allow up to 30 minutes.
+          startupProbe:
+            exec:
+              command: [mc-health]
+            periodSeconds: 10
+            failureThreshold: 180
+          readinessProbe:
+            exec:
+              command: [mc-health]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [mc-health]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: atm10-data
+---
+# A LAN address from MetalLB (gitops/manifests/metallb-config). Minecraft is
+# plain TCP, so it doesn't go through the Traefik Gateway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: atm10
+  namespace: minecraft
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.1.242
+  # Announce from the node running the pod, so the server sees players' real
+  # IPs (for bans and logs).
+  externalTrafficPolicy: Local
+  selector:
+    app: atm10
+  ports:
+    - name: minecraft
+      port: 25565
+      targetPort: minecraft
+      protocol: TCP

@@ -46,3 +46,9 @@ variable "healthchecks_ping_url" {
   default     = ""
   sensitive   = true
 }
+
+variable "curseforge_api_key" {
+  description = "CurseForge API key the Minecraft server uses to download its modpack (https://console.curseforge.com)."
+  type        = string
+  sensitive   = true
+}

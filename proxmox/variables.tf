@@ -7,7 +7,7 @@ variable "vm_cores" {
 variable "vm_memory_mb" {
   description = "Memory in MiB per Kubernetes VM"
   type        = number
-  default     = 4096
+  default     = 16384
 }
 
 variable "kubernetes_pod_cidr" {

@@ -59,5 +59,5 @@ variable "vm_cores" {
 variable "vm_memory_mb" {
   description = "Dedicated memory in MiB."
   type        = number
-  default     = 4096
+  default     = 16384
 }

@@ -1,5 +1,6 @@
 # LAN addresses MetalLB hands out to LoadBalancer Services. Traefik uses
-# 192.168.1.241 (gitops/apps/traefik.yaml).
+# 192.168.1.241 (gitops/apps/traefik.yaml) and Minecraft 192.168.1.242
+# (gitops/manifests/minecraft).
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:

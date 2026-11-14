@@ -2,7 +2,7 @@
 # storage, collectors, vmalert, Alertmanager and Grafana. The chart wires the
 # components (remote write, alert datasources, Grafana datasources) to each
 # other. gitops/manifests/observability adds the homelab dashboards and the
-# Traefik, cert-manager and CloudNativePG scrapes and alerts.
+# Traefik and cert-manager scrapes and alerts.
 #
 # The namespace and the alertmanager-config and grafana-admin Secrets are
 # created by OpenTofu (kubernetes/observability.tf), so no credentials are in
@@ -267,49 +267,12 @@ spec:
               type: ClusterIP
               port: 80
 
-            # Two replicas, one per worker. State lives in the grafana-db
-            # PostgreSQL cluster (gitops/manifests/observability/grafana-db.yaml)
-            # rather than a local volume, so either replica can serve any
-            # request and sessions survive a pod moving.
-            replicas: 2
+            # One replica with its state in SQLite on a TrueNAS volume.
             persistence:
-              enabled: false
-            podDisruptionBudget:
-              minAvailable: 1
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: grafana
-                    app.kubernetes.io/instance: vm-k8s-stack
-
-            env:
-              GF_DATABASE_TYPE: postgres
-              GF_DATABASE_HOST: grafana-db-rw.observability.svc:5432
-              GF_DATABASE_NAME: grafana
-              GF_DATABASE_SSL_MODE: require
-            envValueFrom:
-              GF_DATABASE_USER:
-                secretKeyRef:
-                  name: grafana-db-app
-                  key: username
-              GF_DATABASE_PASSWORD:
-                secretKeyRef:
-                  name: grafana-db-app
-                  key: password
-
-            # Grafana's own alerting runs on every replica; gossip over the
-            # headless Service lets them share state so notifications aren't
-            # sent twice.
-            headlessService: true
-            grafana.ini:
-              unified_alerting:
-                enabled: true
-                ha_peers: grafana-headless:9094
-                ha_listen_address: ${POD_IP}:9094
-                ha_advertise_address: ${POD_IP}:9094
+              enabled: true
+              type: pvc
+              storageClassName: truenas-nvmeof
+              size: 5Gi
 
             plugins:
               - victoriametrics-metrics-datasource
@@ -319,12 +282,10 @@ spec:
               requests: { cpu: 50m, memory: 768Mi }
               limits: { memory: 1536Mi }
 
-            # Replace one pod at a time, so one replica is always serving.
+            # The ReadWriteOnce PVC can only attach to one node, so stop the old
+            # pod before starting the new one instead of rolling.
             deploymentStrategy:
-              type: RollingUpdate
-              rollingUpdate:
-                maxUnavailable: 0
-                maxSurge: 1
+              type: Recreate
 
             sidecar:
               resources:

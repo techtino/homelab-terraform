@@ -24,16 +24,22 @@ resource "proxmox_virtual_environment_vm" "this" {
   reboot_after_update                  = true
   scsi_hardware                        = "virtio-scsi-single"
   started                              = true
-  stop_on_destroy                      = false
-  tablet_device                        = true
-  timeout_clone                        = 1800
-  timeout_create                       = 1800
-  timeout_migrate                      = 1800
-  timeout_reboot                       = 1800
-  timeout_shutdown_vm                  = 1800
-  timeout_start_vm                     = 1800
-  timeout_stop_vm                      = 300
-  purge_on_destroy                     = true
+  # Memory can be added to a running VM. The guest kernel onlines new memory
+  # by itself (Debian's default: /sys/devices/system/memory/auto_online_blocks
+  # is "online"), but the kubelet only reads the node's capacity when it
+  # starts: run `systemctl restart kubelet` on the node afterwards. Removing
+  # memory still needs a restart.
+  hotplug             = "network,disk,usb,memory"
+  stop_on_destroy     = false
+  tablet_device       = true
+  timeout_clone       = 1800
+  timeout_create      = 1800
+  timeout_migrate     = 1800
+  timeout_reboot      = 1800
+  timeout_shutdown_vm = 1800
+  timeout_start_vm    = 1800
+  timeout_stop_vm     = 300
+  purge_on_destroy    = true
 
   agent {
     enabled = true
@@ -45,7 +51,9 @@ resource "proxmox_virtual_environment_vm" "this" {
   cpu {
     cores   = var.vm_cores
     sockets = 1
-    type    = "host"
+    # Required for memory hotplug.
+    numa = true
+    type = "host"
   }
 
   efi_disk {
